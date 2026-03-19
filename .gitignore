@@ -1,0 +1,11 @@
+logs/
+models/
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+.cache/
+*.bin
+*.safetensors
+*.pt
+*.pth
