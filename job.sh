@@ -19,6 +19,8 @@ nvidia-smi
 
 source ~/miniconda3/etc/profile.d/conda.sh
 conda activate llm_safety
+
+pip install -q git+https://github.com/saintslab/osc_reg.git
  
 echo "Python   : $(which python3)"
 echo "Python V : $(python3 --version)"

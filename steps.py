@@ -36,7 +36,7 @@ PRECISION = "fp16"
 
 
 
-def load_advbench(path: str, n: int, seed: int = 42) -> list[str]:
+def load_dataset(path: str, n: int, seed: int = 42) -> list[str]:
    
     log.info("Loading HarmBench from %s ...", path)
 
@@ -62,15 +62,15 @@ def load_advbench(path: str, n: int, seed: int = 42) -> list[str]:
 def run():
     log.info("=" * 60)
     log.info("STEP 1 — Adaptive Attack on %s Model", PRECISION.upper())
-    log.info("Dataset : HarmBench — %d goals (seed=%d)", N_GOALS, RANDOM_SEED)
+    log.info("Dataset : HarmBench — %s goals (seed=%d)", N_GOALS, RANDOM_SEED)
     log.info("Target  : Llama-3-8B-Instruct (%s, GPU 0)", PRECISION.upper())
     log.info("Attacker: Qwen2.5-14B-Instruct (INT8, GPU 1)")
-    log.info("Judge   : LlamaGuard3-8B (BF16, GPU 2)")
-    log.info("Strategy: CoT mutation (1-3) + Crescendo (4-5)")
+    log.info("Judge : LlamaGuard3-8B (BF16, GPU 2)")
+    log.info("Strategy: CoT mutation (1-5) + Crescendo (5-7)")
     log.info("=" * 60)
 
     
-    goals = load_advbench(DATASET_PATH, n=N_GOALS, seed=RANDOM_SEED)
+    goals = load_dataset(DATASET_PATH, n=N_GOALS, seed=RANDOM_SEED)
 
    
     log.info("Loading target model...")
