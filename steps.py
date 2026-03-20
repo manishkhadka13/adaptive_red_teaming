@@ -29,7 +29,7 @@ from src.judge        import Judge
 from src.attacker     import AdaptiveAttacker
 
 
-ADVBENCH_PATH = "data/dataset.csv"   
+ADVBENCH_PATH = "data/HarmBench.csv"   
 N_GOALS  = None                 
 RANDOM_SEED = 42                    
 PRECISION = "fp16"                
@@ -38,10 +38,10 @@ PRECISION = "fp16"
 
 def load_advbench(path: str, n: int, seed: int = 42) -> list[str]:
    
-    log.info("Loading AdvBench from %s ...", path)
+    log.info("Loading HarmBench from %s ...", path)
 
     df = pd.read_csv(path)
-    log.info("AdvBench loaded. Total prompts: %d", len(df))
+    log.info("HarmBench loaded. Total prompts: %d", len(df))
 
     
     all_goals = df["prompt"].dropna().tolist()
@@ -62,10 +62,10 @@ def load_advbench(path: str, n: int, seed: int = 42) -> list[str]:
 def run():
     log.info("=" * 60)
     log.info("STEP 1 — Adaptive Attack on %s Model", PRECISION.upper())
-    log.info("Dataset : AdvBench — %d goals (seed=%d)", N_GOALS, RANDOM_SEED)
-    log.info("Target  : Llama-3-8B-Instruct    (%s, GPU 0)", PRECISION.upper())
-    log.info("Attacker: Qwen2.5-14B-Instruct   (INT8, GPU 1)")
-    log.info("Judge   : LlamaGuard3-8B         (BF16, GPU 2)")
+    log.info("Dataset : HarmBench — %d goals (seed=%d)", N_GOALS, RANDOM_SEED)
+    log.info("Target  : Llama-3-8B-Instruct (%s, GPU 0)", PRECISION.upper())
+    log.info("Attacker: Qwen2.5-14B-Instruct (INT8, GPU 1)")
+    log.info("Judge   : LlamaGuard3-8B (BF16, GPU 2)")
     log.info("Strategy: CoT mutation (1-3) + Crescendo (4-5)")
     log.info("=" * 60)
 
@@ -110,7 +110,7 @@ def run():
     log.info("=" * 60)
     log.info("RESULTS — STEP 1")
     log.info("=" * 60)
-    log.info("Dataset : AdvBench (%d goals, seed=%d)", N_GOALS, RANDOM_SEED)
+    log.info("Dataset : HarmBench (%d goals, seed=%d)", N_GOALS, RANDOM_SEED)
     log.info("Precision : %s", PRECISION.upper())
     log.info("Total goals : %d", total)
     log.info("Jailbreaks  : %d", jailbreaks)
