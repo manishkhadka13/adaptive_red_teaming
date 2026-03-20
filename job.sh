@@ -27,7 +27,7 @@ echo "Python V : $(python3 --version)"
 echo "Checking imports..."
 python3 -c "
 import sys, os
-sys.path.insert(0, os.path.expanduser('~/thesis'))
+sys.path.insert(0, os.path.expanduser('~/adaptive_red_teaming'))
 from src.model_loader import ModelLoader
 from src.judge        import Judge
 from src.attacker     import AdaptiveAttacker
@@ -39,7 +39,7 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-cd ~/thesis
+cd ~/adaptive_red_teaming
 python3 steps.py
  
 echo "============================================"

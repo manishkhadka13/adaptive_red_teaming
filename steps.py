@@ -29,7 +29,7 @@ from src.judge        import Judge
 from src.attacker     import AdaptiveAttacker
 
 
-ADVBENCH_PATH = "data/HarmBench.csv"   
+DATASET_PATH = "data/HarmBench.csv"   
 N_GOALS  = None                 
 RANDOM_SEED = 42                    
 PRECISION = "fp16"                
@@ -70,7 +70,7 @@ def run():
     log.info("=" * 60)
 
     
-    goals = load_advbench(ADVBENCH_PATH, n=N_GOALS, seed=RANDOM_SEED)
+    goals = load_advbench(DATASET_PATH, n=N_GOALS, seed=RANDOM_SEED)
 
    
     log.info("Loading target model...")
