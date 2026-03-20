@@ -39,4 +39,6 @@ python3 run_step1.py --precision int4 --model llama
 4 target models × 3 precisions × 520 AdvBench prompts = 12 runs
 
 ## Dataset
-[AdvBench](https://arxiv.org/abs/2307.15043) — 520 harmful behaviors (Zou et al. 2023)  
+[AdvBench](https://huggingface.co/datasets/walledai/AdvBench) — 520 harmful behaviors
+[HarmBench](https://huggingface.co/datasets/walledai/HarmBench) - 100 harmful prompts 
+
