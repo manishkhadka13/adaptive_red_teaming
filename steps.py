@@ -87,15 +87,15 @@ def run():
     mlflow.log_param("n_goals", N_GOALS or "all")
     mlflow.log_param("random_seed", RANDOM_SEED)
     mlflow.log_param("target_model", MODEL_ID)
-    mlflow.log_param("attacker_model",   "Qwen/Qwen2.5-14B-Instruct")
-    mlflow.log_param("judge_model",      "meta-llama/Llama-Guard-3-8B")
+    mlflow.log_param("attacker_model", "Qwen/Qwen2.5-14B-Instruct")
+    mlflow.log_param("judge_model", "meta-llama/Llama-Guard-3-8B")
     mlflow.log_param("quantization_lib", "osciquant-ptq")
     mlflow.log_param("max_attempts",     5)
 
     
     mlflow.set_tag("quantization", "osciquant-ptq")
-    mlflow.set_tag("attack",       "cot-mutation-crescendo")
-    mlflow.set_tag("defense",      "chromadb-vector-db")
+    mlflow.set_tag("attack", "cot-mutation-crescendo")
+    mlflow.set_tag("defense", "chromadb-vector-db")
 
 
     all_results = []
@@ -177,10 +177,10 @@ def run():
     log.info("JSON → %s", json_path)
 
 
-    mlflow.log_metric("final_asr",      asr)
-    mlflow.log_metric("total_goals",    total)
-    mlflow.log_metric("jailbreaks",     jailbreaks)
-    mlflow.log_metric("avg_attempts",   avg_attempts)
+    mlflow.log_metric("final_asr", asr)
+    mlflow.log_metric("total_goals", total)
+    mlflow.log_metric("jailbreaks", jailbreaks)
+    mlflow.log_metric("avg_attempts", avg_attempts)
     mlflow.log_artifact(csv_path)
     mlflow.log_artifact(json_path)
     mlflow.end_run()
