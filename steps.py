@@ -32,7 +32,7 @@ from src.attacker     import AdaptiveAttacker
 DATASET_PATH = "data/HarmBench.csv"   
 N_GOALS  = None                 
 RANDOM_SEED = 42                    
-PRECISION = "fp16"                
+PRECISION = "int8"                
 
 
 
