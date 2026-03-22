@@ -89,6 +89,8 @@ class ModelLoader:
                 temperature=temperature if temperature > 0 else None,
                 do_sample=temperature > 0,
                 pad_token_id=self.tokenizer.eos_token_id,
+                repetition_penalty=1.3,
+                no_repeat_ngram_size=5
             )
 
         new_tokens = outputs[0][inputs["input_ids"].shape[1]:]

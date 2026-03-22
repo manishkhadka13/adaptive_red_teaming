@@ -157,7 +157,7 @@ class AdaptiveAttacker:
                 max_new_tokens=max_new_tokens,
                 temperature=temperature if temperature > 0 else None,
                 do_sample=temperature > 0,
-                pad_token_id=self.tokenizer.eos_token_id,
+                pad_token_id=self.tokenizer.eos_token_id
             )
  
         new_tokens = outputs[0][inputs["input_ids"].shape[1]:]
