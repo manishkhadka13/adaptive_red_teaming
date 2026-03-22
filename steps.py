@@ -26,14 +26,14 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 from src.model_loader import ModelLoader, MODEL_ID
-from src.judge        import Judge
-from src.attacker     import AdaptiveAttacker
+from src.judge import Judge
+from src.attacker import AdaptiveAttacker
 
 
 DATASET_PATH = "data/HarmBench.csv"
 N_GOALS = None
 RANDOM_SEED = 42
-PRECISION = "int8"
+PRECISION = "int4"
 
 
 CHECKPOINT_PATH = f"results/checkpoint_{PRECISION}.json"
