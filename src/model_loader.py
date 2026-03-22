@@ -57,7 +57,7 @@ class ModelLoader:
            
             attach_weight_quantizers(
                 model=self.model,
-                exclude_layers=[],
+                exclude_layers=EXCLUDE_LAYERS,
                 quantizer=UniformQuantizer(bit_width=bit_width),
                 enabled=False,
             )
