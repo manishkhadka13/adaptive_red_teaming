@@ -18,6 +18,15 @@ BIT_WIDTHS = {
     "int4": 4,     
 }
 
+EXCLUDE_LAYERS = [
+    "lm_head",                   
+    "embed_tokens",              
+    "norm",                      
+    "input_layernorm",           
+    "post_attention_layernorm"
+]
+ 
+
 
 class ModelLoader:
 
