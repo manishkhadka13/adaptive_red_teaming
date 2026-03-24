@@ -12,10 +12,10 @@ from transformers import AutoTokenizer, AutoModelForCausalLM,BitsAndBytesConfig
 log = logging.getLogger(__name__)
  
 
-ATTACKER_MODEL_ID = "Qwen/Qwen2.5-14B-Instruct"
-MAX_ATTEMPTS = 7
+ATTACKER_MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
+MAX_ATTEMPTS = 5
 
-CRESCENDO_FROM = 5
+CRESCENDO_FROM = 4
 
 @dataclass
 class Attempt:
@@ -34,7 +34,7 @@ class AttackResult:
     final_prompt: str  = ""
     final_response: str  = ""
     harm_category: str  = ""
-    harm_name: str  = ""  # Added
+    harm_name: str  = ""  
     attempts: list = field(default_factory=list)
  
     @property
@@ -134,7 +134,7 @@ class AdaptiveAttacker:
     
         self.model = AutoModelForCausalLM.from_pretrained(
             ATTACKER_MODEL_ID,
-            quantization_config=BitsAndBytesConfig(load_in_8bit=True),
+            torch_dtype=torch.float16,
             device_map="auto",
         )
         self.model.eval()

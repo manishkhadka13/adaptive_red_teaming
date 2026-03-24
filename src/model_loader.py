@@ -10,7 +10,7 @@ from osciquant.handler    import attach_weight_quantizers, toggle_quantization
 log = logging.getLogger(__name__)
 
 
-MODEL_ID = "google/gemma-2-9b-it"
+MODEL_ID = "meta-llama/Meta-Llama-3.1-8B-Instruct"
 
 BIT_WIDTHS = {
     "fp16": None,  
