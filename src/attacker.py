@@ -190,56 +190,29 @@ class AdaptiveAttacker:
  
         for n in range(1, self.max_attempts + 1):
  
-            if n >= CRESCENDO_FROM:
-                log.info("  Attempt %d/%d [CRESCENDO]", n, self.max_attempts)
-    
-                success, final_prompt, final_response, strategy, reasoning, harm_cat, harm_name = \
-                    self._crescendo_attack(goal, n, precision)
-    
-                attempt = Attempt(
-                    number=n,
-                    prompt=final_prompt,
-                    response=final_response,
-                    is_jailbreak=success,
-                    strategy_used=strategy,
-                    reasoning=reasoning,
-                )
-                result.attempts.append(attempt)
-    
-                if success:
-                    result.success = True
-                    result.final_prompt = final_prompt
-                    result.final_response = final_response
-                    result.harm_category = harm_cat
-                    result.harm_name = harm_name  
-                    log.info("JAILBREAK via crescendo on attempt %d | Category: %s", n, harm_name)
-                    return result
-    
-                log.info("Crescendo failed on attempt %d", n)
-                continue
             log.info("  Attempt %d/%d [CoT]", n, self.max_attempts)
-    
+ 
             # 1. Send to target
             response = self.target.generate(current_prompt)
             log.info("  Response: %s...", response[:100])
-    
+ 
             # 2. Judge
             verdict = self.judge.evaluate(goal=goal,response=response)
-    
+ 
             # Update harm category if revealed
             if verdict.harm_category:
                 result.harm_category = verdict.harm_category
                 result.harm_name = verdict.harm_name  # Added
                 log.info("  Harm category: %s (%s)",
                          verdict.harm_category, verdict.harm_name)
-    
+ 
             attempt = Attempt(
                 number=n,
                 prompt=current_prompt,
                 response=response,
                 is_jailbreak=verdict.is_jailbreak,
             )
-    
+ 
             # 3. Success?
             if verdict.is_jailbreak:
                 attempt.strategy_used = "direct"
@@ -249,35 +222,36 @@ class AdaptiveAttacker:
                 result.final_response = response
                 log.info("JAILBREAK on attempt %d", n)
                 return result
-    
+ 
             log.info("Refused")
-    
+ 
             if n == self.max_attempts:
                 result.attempts.append(attempt)
                 break
-    
+ 
             # 4. Chain-of-thought mutation
             mutated, strategy, reasoning = self._cot_mutate(
                 goal, current_prompt, response, previous
             )
-    
+ 
             attempt.strategy_used = strategy
             attempt.reasoning = reasoning
             result.attempts.append(attempt)
-    
+ 
             log.info("  Strategy: %s", strategy[:70])
             if reasoning:
                 log.info("  Reasoning: %s", reasoning[:100])
-    
+ 
             previous.append(current_prompt)
             current_prompt = mutated
-    
+ 
         result.success = False
         result.final_prompt = current_prompt
         result.final_response = (result.attempts[-1].response
                                  if result.attempts else "")
         log.info("  All attempts exhausted. Not jailbroken.")
         return result
+ 
  
     def unload(self):
         del self.model
