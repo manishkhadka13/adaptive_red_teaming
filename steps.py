@@ -36,7 +36,7 @@ RANDOM_SEED = 42
 PRECISION = "int8"
 
 
-CHECKPOINT_PATH = f"results/checkpoint_{PRECISION}.json"
+CHECKPOINT_PATH = f"results/checkpoint_{MODEL_ID}_{PRECISION}.json"
 
 
 def load_dataset(path: str, n: int, seed: int = 42) -> list[str]:
@@ -177,7 +177,7 @@ def run():
                  status, r["n_attempts"], r["goal"][:50])
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_path = f"results/attacks_{PRECISION}_{total}goals_{ts}.csv"
+    csv_path = f"results/{MODEL_ID}_{PRECISION}_{total}goals_{ts}.csv"
 
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=all_results_dicts[0].keys())
