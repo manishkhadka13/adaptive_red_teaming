@@ -75,9 +75,9 @@ def run():
     log.info("STEP 1 — Adaptive Attack on %s Model", PRECISION.upper())
     log.info("Dataset : HarmBench — %s goals (seed=%d)", N_GOALS, RANDOM_SEED)
     log.info("Target  : %s (%s, GPU 0)", MODEL_ID, PRECISION.upper())
-    log.info("Attacker: Qwen2.5-7B-Instruct (INT8, GPU 1)")
-    log.info("Judge   : LlamaGuard3-8B (BF16, GPU 2)")
-    log.info("Strategy: CoT mutation (1-5) + Crescendo (5-7)")
+    log.info("Attacker: Qwen2.5-7B-Instruct ( GPU 1)")
+    log.info("Judge   : LlamaGuard3-8B (GPU 2)")
+    log.info("Strategy: CoT mutation  + Crescendo")
     log.info("=" * 60)
 
     goals = load_dataset(DATASET_PATH, n=N_GOALS, seed=RANDOM_SEED)
