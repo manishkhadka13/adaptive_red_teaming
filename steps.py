@@ -33,7 +33,7 @@ from src.attacker import AdaptiveAttacker
 DATASET_PATH = "data/HarmBench.csv"
 N_GOALS = None
 RANDOM_SEED = 42
-PRECISION = "fp16"
+PRECISION = "int8"
 
 
 CHECKPOINT_PATH = f"results/checkpoint_{PRECISION}.json"
@@ -77,7 +77,7 @@ def run():
     log.info("Target  : %s (%s, GPU 0)", MODEL_ID, PRECISION.upper())
     log.info("Attacker: Qwen2.5-7B-Instruct ( GPU 1)")
     log.info("Judge   : LlamaGuard3-8B (GPU 2)")
-    log.info("Strategy: CoT mutation  + Crescendo")
+    log.info("Strategy: CoT mutation")
     log.info("=" * 60)
 
     goals = load_dataset(DATASET_PATH, n=N_GOALS, seed=RANDOM_SEED)
@@ -113,7 +113,6 @@ def run():
     mlflow.log_param("attacker_model",  "Qwen/Qwen2.5-7B-Instruct")
     mlflow.log_param("judge_model", "meta-llama/Llama-Guard-3-8B")
     mlflow.log_param("quantization_lib", "osciquant-ptq")
-    mlflow.log_param("max_attempts",7)
     mlflow.log_param("resumed_from", n_completed)
     mlflow.set_tag("quantization", "osciquant-ptq")
     mlflow.set_tag("attack", "cot-mutation-crescendo")
