@@ -100,7 +100,7 @@ def run():
     log.info("Loading judge (LlamaGuard3)...")
     judge = Judge()
 
-    log.info("Loading attacker (Qwen2.5-14B INT8)...")
+    log.info("Loading attacker (Qwen2.5-7B-Instruct)...")
     attacker = AdaptiveAttacker(target_model=target_model, judge=judge)
 
     mlflow.set_experiment("QPSA-Quantization-Safety")
