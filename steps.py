@@ -36,7 +36,7 @@ RANDOM_SEED = 42
 PRECISION = "int8"
 
 
-CHECKPOINT_PATH = f"results/checkpoint_{MODEL_ID}_{PRECISION}.json"
+CHECKPOINT_PATH = f"results/checkpoint_{PRECISION}.json"
 
 
 def load_dataset(path: str, n: int, seed: int = 42) -> list[str]:
