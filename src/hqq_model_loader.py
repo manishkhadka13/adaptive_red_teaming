@@ -1,11 +1,9 @@
 import os
 import torch
 import logging
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-
-from osciquant.quantizers import UniformQuantizer
-from osciquant.handler    import attach_weight_quantizers, toggle_quantization
+from transformers import AutoTokenizer
+from hqq.engine.hf import HQQModelForCausalLM
+from hqq.core.quantize import BaseQuantizeConfig
 
 log = logging.getLogger(__name__)
 
@@ -17,15 +15,6 @@ BIT_WIDTHS = {
     "int8": 8,     
     "int4": 4,     
 }
-
-EXCLUDE_LAYERS = [
-    "lm_head",                   
-    "embed_tokens",              
-    "norm",                      
-    "input_layernorm",           
-    "post_attention_layernorm"
-]
- 
 
 
 class ModelLoader:
@@ -41,34 +30,36 @@ class ModelLoader:
     def _load(self):
         log.info("Loading %s at %s ...", self.model_id, self.precision)
 
-        
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.model_id,
-            torch_dtype=torch.float16,
-            device_map="auto"
-        )
-        self.model.eval()
-
-        
         bit_width = BIT_WIDTHS.get(self.precision)
+        
         if bit_width is not None:
-            log.info("Applying OsciQuant PTQ — %d-bit UniformQuantizer...", bit_width)
-
-           
-            attach_weight_quantizers(
-                model=self.model,
-                exclude_layers=EXCLUDE_LAYERS,
-                quantizer=UniformQuantizer(bit_width=bit_width),
-                enabled=False,
-            )
-
+            log.info("Applying HQQ PTQ — %d-bit quantization...", bit_width)
             
-            toggle_quantization(self.model, enabled=True)
-
-            log.info("OsciQuant PTQ applied. Model is now %d-bit.", bit_width)
+            quant_config = BaseQuantizeConfig(
+                nbits=bit_width,
+                group_size=128,
+                axis=1,
+            )
+            
+            self.model = HQQModelForCausalLM.from_pretrained(
+                self.model_id,
+                quant_config=quant_config,
+                compute_dtype=torch.float16,
+                device_map="auto"
+            )
+            
+            log.info("HQQ PTQ applied. Model is now %d-bit.", bit_width)
         else:
+            from transformers import AutoModelForCausalLM
+            
+            self.model = AutoModelForCausalLM.from_pretrained(
+                self.model_id,
+                torch_dtype=torch.float16,
+                device_map="auto"
+            )
             log.info("FP16; no quantization applied.")
 
+        self.model.eval()
        
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_id

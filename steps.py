@@ -25,7 +25,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-from src.model_loader import ModelLoader, MODEL_ID
+from src.hqq_model_loader import ModelLoader, MODEL_ID
 from src.judge import Judge
 from src.attacker import AdaptiveAttacker
 
