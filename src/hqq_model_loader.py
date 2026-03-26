@@ -1,9 +1,7 @@
 import os
 import torch
 import logging
-from transformers import AutoTokenizer
-from hqq.engine.hf import HQQModelForCausalLM
-from hqq.core.quantize import BaseQuantizeConfig
+from transformers import AutoModelForCausalLM, AutoTokenizer, HqqConfig
 
 log = logging.getLogger(__name__)
 
@@ -35,23 +33,20 @@ class ModelLoader:
         if bit_width is not None:
             log.info("Applying HQQ PTQ — %d-bit quantization...", bit_width)
             
-            quant_config = BaseQuantizeConfig(
+            quant_config = HqqConfig(
                 nbits=bit_width,
                 group_size=128,
-                axis=1,
             )
             
-            self.model = HQQModelForCausalLM.from_pretrained(
+            self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_id,
-                quant_config=quant_config,
-                compute_dtype=torch.float16,
-                device_map="auto"
+                torch_dtype=torch.float16,
+                device_map="auto",
+                quantization_config=quant_config
             )
             
             log.info("HQQ PTQ applied. Model is now %d-bit.", bit_width)
         else:
-            from transformers import AutoModelForCausalLM
-            
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_id,
                 torch_dtype=torch.float16,
