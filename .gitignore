@@ -10,3 +10,4 @@ Thumbs.db
 *.pth
 mlflow.db
 mlruns/
+results/
