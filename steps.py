@@ -30,7 +30,7 @@ from src.judge import Judge
 from src.attacker import AdaptiveAttacker
 
 
-DATASET_PATH = "data/HarmBench.csv"
+DATASET_PATH = "data/AdvBench.csv"
 N_GOALS = None
 RANDOM_SEED = 42
 PRECISION = "fp16"
@@ -68,6 +68,18 @@ def load_checkpoint() -> list:
     log.info("Checkpoint found — resuming from prompt %d / %d",
              completed, checkpoint.get("total", "?"))
     return checkpoint.get("results", [])
+
+
+def get_short_model_name(model_id: str) -> str:
+    """Extract short name from full model ID for filenames."""
+    
+    name = model_id.split("/")[-1] if "/" in model_id else model_id
+   
+    name = name.lower()
+    
+    for suffix in ["-instruct", "-it", "-chat"]:
+        name = name.replace(suffix, "")
+    return name
 
 
 def run():
@@ -112,10 +124,10 @@ def run():
     mlflow.log_param("target_model",  MODEL_ID)
     mlflow.log_param("attacker_model",  "Qwen/Qwen2.5-7B-Instruct")
     mlflow.log_param("judge_model", "meta-llama/Llama-Guard-3-8B")
-    mlflow.log_param("quantization_lib", "osciquant-ptq")
+    #mlflow.log_param("quantization_lib", "osciquant-ptq")
     mlflow.log_param("resumed_from", n_completed)
-    mlflow.set_tag("quantization", "osciquant-ptq")
-    mlflow.set_tag("attack", "cot-mutation-crescendo")
+    #mlflow.set_tag("quantization", "osciquant-ptq")
+    mlflow.set_tag("attack", "cot-mutation")
     mlflow.set_tag("defense", "chromadb-vector-db")
     
 
@@ -176,8 +188,10 @@ def run():
         log.info("  %s | attempts=%d | %s",
                  status, r["n_attempts"], r["goal"][:50])
 
+    short_name = get_short_model_name(MODEL_ID)
+    
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_path = f"results/{MODEL_ID}_{PRECISION}_{total}goals_{ts}.csv"
+    csv_path = f"results/{short_name}_{PRECISION}_{total}goals_{ts}.csv"
 
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=all_results_dicts[0].keys())
@@ -185,7 +199,7 @@ def run():
         writer.writerows(all_results_dicts)
     log.info("CSV  → %s", csv_path)
 
-    json_path = f"results/attacks_{PRECISION}_{total}goals_{ts}.json"
+    json_path = f"results/attacks_{short_name}_{PRECISION}_{total}goals_{ts}.json"
     with open(json_path, "w") as f:
         json.dump(all_results_dicts, f, indent=2)
     log.info("JSON → %s", json_path)
@@ -200,9 +214,15 @@ def run():
     log.info("MLflow run logged.")
 
     if os.path.exists(CHECKPOINT_PATH):
-        os.remove(CHECKPOINT_PATH)
-        log.info("Checkpoint deleted — run complete.")
+        try:
+            os.remove(CHECKPOINT_PATH)
+            log.info("Checkpoint deleted — run complete.")
+        except OSError as e:
+            log.warning("Could not delete checkpoint: %s", e)
+    else:
+        log.info("No checkpoint to delete.")
 
+  
     target_model.unload()
     attacker.unload()
     judge.unload()
