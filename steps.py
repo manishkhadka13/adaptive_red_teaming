@@ -33,7 +33,7 @@ from src.attacker import AdaptiveAttacker
 DATASET_PATH = "data/AdvBench.csv"
 N_GOALS = None
 RANDOM_SEED = 42
-PRECISION = "int8"
+PRECISION = "int4"
 
 
 CHECKPOINT_PATH = f"results/checkpoint_{PRECISION}.json"
@@ -85,7 +85,6 @@ def get_short_model_name(model_id: str) -> str:
 def run():
     log.info("=" * 60)
     log.info("STEP 1 — Adaptive Attack on %s Model", PRECISION.upper())
-    log.info("Dataset : HarmBench — %s goals (seed=%d)", N_GOALS, RANDOM_SEED)
     log.info("Target  : %s (%s, GPU 0)", MODEL_ID, PRECISION.upper())
     log.info("Attacker: Qwen2.5-7B-Instruct ( GPU 1)")
     log.info("Judge   : LlamaGuard3-8B (GPU 2)")
