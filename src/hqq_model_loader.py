@@ -24,10 +24,10 @@ BIT_WIDTHS = {
 
 class ModelLoader:
 
-    def __init__(self, model_id: str, precision: str):
-      
-        self.model_id  = model_id
+    def __init__(self, model_id: str, precision: str, fast_inference: bool = True):
+        self.model_id = model_id
         self.precision = precision
+        self.fast_inference = fast_inference
         self.model = None
         self.tokenizer = None
         self._load()
