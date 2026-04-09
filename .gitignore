@@ -9,3 +9,5 @@ Thumbs.db
 *.pt
 *.pth
 mlflow.db
+mlruns/
+results/

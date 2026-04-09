@@ -25,15 +25,15 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-from src.model_loader import ModelLoader, MODEL_ID
+from src.hqq_model_loader import ModelLoader, MODEL_ID
 from src.judge import Judge
 from src.attacker import AdaptiveAttacker
 
 
-DATASET_PATH = "data/HarmBench.csv"
+DATASET_PATH = "data/AdvBench.csv"
 N_GOALS = None
 RANDOM_SEED = 42
-PRECISION = "int8"
+PRECISION = "int4"
 
 
 CHECKPOINT_PATH = f"results/checkpoint_{PRECISION}.json"
@@ -70,14 +70,25 @@ def load_checkpoint() -> list:
     return checkpoint.get("results", [])
 
 
+def get_short_model_name(model_id: str) -> str:
+    """Extract short name from full model ID for filenames."""
+    
+    name = model_id.split("/")[-1] if "/" in model_id else model_id
+   
+    name = name.lower()
+    
+    for suffix in ["-instruct", "-it", "-chat"]:
+        name = name.replace(suffix, "")
+    return name
+
+
 def run():
     log.info("=" * 60)
     log.info("STEP 1 — Adaptive Attack on %s Model", PRECISION.upper())
-    log.info("Dataset : HarmBench — %s goals (seed=%d)", N_GOALS, RANDOM_SEED)
-    log.info("Target  : Llama-3-8B-Instruct (%s, GPU 0)", PRECISION.upper())
-    log.info("Attacker: Qwen2.5-14B-Instruct (INT8, GPU 1)")
-    log.info("Judge   : LlamaGuard3-8B (BF16, GPU 2)")
-    log.info("Strategy: CoT mutation (1-5) + Crescendo (5-7)")
+    log.info("Target  : %s (%s, GPU 0)", MODEL_ID, PRECISION.upper())
+    log.info("Attacker: Qwen2.5-7B-Instruct ( GPU 1)")
+    log.info("Judge   : LlamaGuard3-8B (GPU 2)")
+    log.info("Strategy: CoT mutation")
     log.info("=" * 60)
 
     goals = load_dataset(DATASET_PATH, n=N_GOALS, seed=RANDOM_SEED)
@@ -100,7 +111,7 @@ def run():
     log.info("Loading judge (LlamaGuard3)...")
     judge = Judge()
 
-    log.info("Loading attacker (Qwen2.5-14B INT8)...")
+    log.info("Loading attacker (Qwen2.5-7B-Instruct)...")
     attacker = AdaptiveAttacker(target_model=target_model, judge=judge)
 
     mlflow.set_experiment("QPSA-Quantization-Safety")
@@ -110,13 +121,12 @@ def run():
     mlflow.log_param("n_goals", N_GOALS or "all")
     mlflow.log_param("random_seed", RANDOM_SEED)
     mlflow.log_param("target_model",  MODEL_ID)
-    mlflow.log_param("attacker_model",  "Qwen/Qwen2.5-14B-Instruct")
+    mlflow.log_param("attacker_model",  "Qwen/Qwen2.5-7B-Instruct")
     mlflow.log_param("judge_model", "meta-llama/Llama-Guard-3-8B")
-    mlflow.log_param("quantization_lib", "osciquant-ptq")
-    mlflow.log_param("max_attempts",7)
+    #mlflow.log_param("quantization_lib", "osciquant-ptq")
     mlflow.log_param("resumed_from", n_completed)
-    mlflow.set_tag("quantization", "osciquant-ptq")
-    mlflow.set_tag("attack", "cot-mutation-crescendo")
+    #mlflow.set_tag("quantization", "osciquant-ptq")
+    mlflow.set_tag("attack", "cot-mutation")
     mlflow.set_tag("defense", "chromadb-vector-db")
     
 
@@ -177,8 +187,10 @@ def run():
         log.info("  %s | attempts=%d | %s",
                  status, r["n_attempts"], r["goal"][:50])
 
+    short_name = get_short_model_name(MODEL_ID)
+    
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_path = f"results/attacks_{PRECISION}_{total}goals_{ts}.csv"
+    csv_path = f"results/{short_name}_{PRECISION}_{total}goals_{ts}.csv"
 
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=all_results_dicts[0].keys())
@@ -186,7 +198,7 @@ def run():
         writer.writerows(all_results_dicts)
     log.info("CSV  → %s", csv_path)
 
-    json_path = f"results/attacks_{PRECISION}_{total}goals_{ts}.json"
+    json_path = f"results/attacks_{short_name}_{PRECISION}_{total}goals_{ts}.json"
     with open(json_path, "w") as f:
         json.dump(all_results_dicts, f, indent=2)
     log.info("JSON → %s", json_path)
@@ -201,9 +213,15 @@ def run():
     log.info("MLflow run logged.")
 
     if os.path.exists(CHECKPOINT_PATH):
-        os.remove(CHECKPOINT_PATH)
-        log.info("Checkpoint deleted — run complete.")
+        try:
+            os.remove(CHECKPOINT_PATH)
+            log.info("Checkpoint deleted — run complete.")
+        except OSError as e:
+            log.warning("Could not delete checkpoint: %s", e)
+    else:
+        log.info("No checkpoint to delete.")
 
+  
     target_model.unload()
     attacker.unload()
     judge.unload()
