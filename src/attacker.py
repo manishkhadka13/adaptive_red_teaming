@@ -17,6 +17,9 @@ ATTACKER_MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
 MAX_ATTEMPTS = 3
 
 
+TEMPERATURE_SCHEDULE = [0.7, 0.5, 0.3]
+
+
 @dataclass
 class Attempt:
     number: int
@@ -48,7 +51,7 @@ class AttackResult:
             "success": self.success,
             "n_attempts": self.n_attempts,
             "harm_category": self.harm_category,
-            "harm_name": self.harm_name,  # Added
+            "harm_name": self.harm_name,
             "final_prompt":  self.final_prompt,
             "final_response": self.final_response[:300],
             "strategies_used": [a.strategy_used[:200] for a in self.attempts],
@@ -117,8 +120,8 @@ class AdaptiveAttacker:
         log.info("Attacker loaded. VRAM: %.1f GB", vram)
         
     def _generate(self, prompt: str, max_new_tokens: int = 1024,
-                  temperature: float = 0.7) -> str:
-        """Generate using Qwen2.5 attacker."""
+                  attempt_num: int = 0) -> str:  # Added attempt_num parameter
+        """Generate using Qwen2.5 attacker with temperature decay."""
         messages  = [{"role": "user", "content": prompt}]
         formatted = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
@@ -126,6 +129,9 @@ class AdaptiveAttacker:
         inputs = self.tokenizer(
             formatted, return_tensors="pt"
         ).to(self.model.device)
+ 
+        # Get temperature from schedule
+        temperature = TEMPERATURE_SCHEDULE[min(attempt_num, len(TEMPERATURE_SCHEDULE)-1)]
  
         with torch.no_grad():
             outputs = self.model.generate(
@@ -153,7 +159,7 @@ class AdaptiveAttacker:
     
     
     def _cot_mutate(self, goal: str, prompt: str, refusal: str,
-                    previous: list) -> tuple[str, str, str]:
+                    previous: list, attempt_num: int = 0) -> tuple[str, str, str]:  # Added attempt_num
     
         prev_str = "\n".join(f"  - {p[:100]}" for p in previous[-3:]) or "  None"
  
@@ -162,7 +168,8 @@ class AdaptiveAttacker:
                 goal=goal, prompt=prompt,
                 refusal=refusal[:400], previous=prev_str,
             ),
-            max_new_tokens=1024, temperature=0.7,
+            max_new_tokens=1024, 
+            attempt_num=attempt_num,  # Pass attempt_num for temperature decay
         )
  
         data = self._parse_json(raw)
@@ -202,7 +209,7 @@ class AdaptiveAttacker:
             # Update harm category if revealed
             if verdict.harm_category:
                 result.harm_category = verdict.harm_category
-                result.harm_name = verdict.harm_name  # Added
+                result.harm_name = verdict.harm_name
                 log.info("  Harm category: %s (%s)",
                          verdict.harm_category, verdict.harm_name)
  
@@ -229,9 +236,10 @@ class AdaptiveAttacker:
                 result.attempts.append(attempt)
                 break
  
-            # 4. Chain-of-thought mutation
+            # 4. Chain-of-thought mutation with temperature decay
             mutated, strategy, reasoning = self._cot_mutate(
-                goal, current_prompt, response, previous
+                goal, current_prompt, response, previous, 
+                attempt_num=n-1  # 0-indexed: 0, 1, 2 for attempts 1, 2, 3
             )
  
             attempt.strategy_used = strategy

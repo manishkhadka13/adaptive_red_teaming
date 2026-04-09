@@ -3,6 +3,13 @@ import torch
 import logging
 from transformers import AutoModelForCausalLM, AutoTokenizer, HqqConfig
 
+try:
+    from hqq.utils.patching import prepare_for_inference
+    from hqq.core.quantize import HQQBackend, HQQLinear
+    HQQ_UTILS_AVAILABLE = True
+except ImportError:
+    HQQ_UTILS_AVAILABLE = False
+
 log = logging.getLogger(__name__)
 
 
@@ -45,6 +52,30 @@ class ModelLoader:
                 quantization_config=quant_config
             )
             
+            if self.fast_inference and HQQ_UTILS_AVAILABLE:
+                if bit_width == 4:
+                    # 4-bit: Use fastest fused kernels
+                    log.info("Enabling 4-bit fast inference")
+                    try:
+                        prepare_for_inference(self.model, backend="torchao_int4")
+                        log.info("torchao_int4 enabled ")
+                    except Exception as e:
+                        log.warning(f"torchao_int4 failed: {e}")
+                
+                elif bit_width == 8:
+                    # 8-bit: No fused kernels, use PyTorch optimizations
+                    log.info("Enabling 8-bit optimizations")
+                    try:
+                        HQQLinear.set_backend(HQQBackend.PYTORCH)
+                        log.info("PYTORCH_FAST enabled for 8-bit")
+                        
+                        if hasattr(torch, 'compile'):
+                            log.info("Applying torch.compile...")
+                            self.model = torch.compile(self.model, mode="reduce-overhead")
+                            
+                    except Exception as e:
+                        log.warning(f"8-bit optimization failed: {e}")
+            
             log.info("HQQ PTQ applied. Model is now %d-bit.", bit_width)
         else:
             self.model = AutoModelForCausalLM.from_pretrained(
@@ -52,6 +83,9 @@ class ModelLoader:
                 torch_dtype=torch.float16,
                 device_map="auto"
             )
+            if self.fast_inference and hasattr(torch, 'compile'):
+                log.info("Applying torch.compile to FP16...")
+                self.model = torch.compile(self.model, mode="reduce-overhead")
             log.info("FP16; no quantization applied.")
 
         self.model.eval()
