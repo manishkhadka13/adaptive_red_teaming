@@ -33,14 +33,14 @@ from src.attacker import AdaptiveAttacker
 DATASET_PATH = "data/AdvBench.csv"
 N_GOALS = None
 RANDOM_SEED = 42
-PRECISION = "int8"
+PRECISION = "fp16"
 
 
 CHECKPOINT_PATH = f"results/checkpoint_{PRECISION}.json"
 
 
 def load_dataset(path: str, n: int, seed: int = 42) -> list[str]:
-    log.info("Loading HarmBench from %s ...", path)
+    log.info("Loading Dataset from %s ...", path)
     df = pd.read_csv(path)
     log.info("HarmBench loaded. Total prompts: %d", len(df))
     all_goals = df["prompt"].dropna().tolist()
