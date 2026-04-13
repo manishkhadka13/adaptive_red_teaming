@@ -3,15 +3,8 @@ import torch
 import logging
 from transformers import AutoModelForCausalLM, AutoTokenizer, HqqConfig
 
-try:
-    from hqq.utils.patching import prepare_for_inference
-    from hqq.core.quantize import HQQBackend, HQQLinear
-    HQQ_UTILS_AVAILABLE = True
-except ImportError:
-    HQQ_UTILS_AVAILABLE = False
 
 log = logging.getLogger(__name__)
-
 
 MODEL_ID = "google/gemma-2-9b-it"
 
@@ -38,6 +31,7 @@ class ModelLoader:
         bit_width = BIT_WIDTHS.get(self.precision)
         
         if bit_width is not None:
+         
             log.info("Applying HQQ PTQ — %d-bit quantization...", bit_width)
             
             quant_config = HqqConfig(
@@ -52,41 +46,45 @@ class ModelLoader:
                 quantization_config=quant_config
             )
             
-            if self.fast_inference and HQQ_UTILS_AVAILABLE:
+            
+            if self.fast_inference:
                 if bit_width == 4:
-                    # 4-bit: Use fastest fused kernels
-                    log.info("Enabling 4-bit fast inference")
+                    log.info("Enabling 4-bit fast inference...")
                     try:
+                        from hqq.utils.patching import prepare_for_inference
                         prepare_for_inference(self.model, backend="torchao_int4")
-                        log.info("torchao_int4 enabled ")
+                        log.info("torchao_int4 enabled")
                     except Exception as e:
                         log.warning(f"torchao_int4 failed: {e}")
                 
                 elif bit_width == 8:
-                    # 8-bit: No fused kernels, use PyTorch optimizations
-                    log.info("Enabling 8-bit optimizations")
+                    log.info("Enabling 8-bit optimizations...")
                     try:
+                        from hqq.core.quantize import HQQBackend, HQQLinear
                         HQQLinear.set_backend(HQQBackend.PYTORCH)
-                        log.info("PYTORCH_FAST enabled for 8-bit")
-                            
+                        log.info("PYTORCH backend enabled for 8-bit")
                     except Exception as e:
                         log.warning(f"8-bit optimization failed: {e}")
             
             log.info("HQQ PTQ applied. Model is now %d-bit.", bit_width)
+            
         else:
+            
+            log.info("Disabling torch.compile for FP16...")
+            os.environ['TORCH_COMPILE_DISABLE'] = '1'
+            torch._dynamo.config.suppress_errors = True
+            torch._dynamo.config.disable = True
+            
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_id,
                 torch_dtype=torch.float16,
                 device_map="auto"
             )
-    
-            log.info("FP16; no quantization applied.")
+            log.info("FP16 loaded (torch.compile disabled)")
 
         self.model.eval()
        
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            self.model_id
-        )
+        self.tokenizer = AutoTokenizer.from_pretrained(self.model_id)
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
 
@@ -96,14 +94,12 @@ class ModelLoader:
     def generate(self, prompt: str, max_new_tokens: int = 1024,
                  temperature: float = 0.0) -> str:
         
-        messages  = [{"role": "user", "content": prompt}]
+        messages = [{"role": "user", "content": prompt}]
         formatted = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
         
-        inputs = self.tokenizer(
-            formatted, return_tensors="pt"
-        ).to(self.model.device)
+        inputs = self.tokenizer(formatted, return_tensors="pt").to(self.model.device)
 
         with torch.no_grad():
             outputs = self.model.generate(
@@ -117,12 +113,9 @@ class ModelLoader:
             )
 
         new_tokens = outputs[0][inputs["input_ids"].shape[1]:]
-        return self.tokenizer.decode(
-            new_tokens, skip_special_tokens=True
-        ).strip()
+        return self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
 
     def unload(self):
-       
         del self.model
         del self.tokenizer
         self.model = None
