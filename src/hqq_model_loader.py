@@ -68,10 +68,6 @@ class ModelLoader:
                     try:
                         HQQLinear.set_backend(HQQBackend.PYTORCH)
                         log.info("PYTORCH_FAST enabled for 8-bit")
-                        
-                        if hasattr(torch, 'compile'):
-                            log.info("Applying torch.compile...")
-                            self.model = torch.compile(self.model, mode="reduce-overhead")
                             
                     except Exception as e:
                         log.warning(f"8-bit optimization failed: {e}")
@@ -83,9 +79,7 @@ class ModelLoader:
                 torch_dtype=torch.float16,
                 device_map="auto"
             )
-            if self.fast_inference and hasattr(torch, 'compile'):
-                log.info("Applying torch.compile to FP16...")
-                self.model = torch.compile(self.model, mode="reduce-overhead")
+    
             log.info("FP16; no quantization applied.")
 
         self.model.eval()
