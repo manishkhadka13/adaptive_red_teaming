@@ -33,7 +33,7 @@ from src.attacker import AdaptiveAttacker
 DATASET_PATH = "data/AdvBench.csv"
 N_GOALS = None
 RANDOM_SEED = 42
-PRECISION = "int4"
+PRECISION = "int8"
 
 
 CHECKPOINT_PATH = f"results/checkpoint_{PRECISION}.json"

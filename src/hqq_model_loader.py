@@ -36,7 +36,7 @@ class ModelLoader:
             
             quant_config = HqqConfig(
                 nbits=bit_width,
-                group_size=128,
+                group_size=64,
             )
             
             self.model = AutoModelForCausalLM.from_pretrained(
