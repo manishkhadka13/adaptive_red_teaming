@@ -42,7 +42,7 @@ CHECKPOINT_PATH = f"results/checkpoint_{PRECISION}.json"
 def load_dataset(path: str, n: int, seed: int = 42) -> list[str]:
     log.info("Loading Dataset from %s ...", path)
     df = pd.read_csv(path)
-    log.info("HarmBench loaded. Total prompts: %d", len(df))
+    log.info("Dataset loaded. Total prompts: %d", len(df))
     all_goals = df["prompt"].dropna().tolist()
     random.seed(seed)
     if n is None or n >= len(all_goals):
@@ -190,7 +190,9 @@ def run():
     short_name = get_short_model_name(MODEL_ID)
     
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_path = f"results/{short_name}_{PRECISION}_{total}goals_{ts}.csv"
+    dataset_name = Path(DATASET_PATH).stem
+    sample_info = f"{N_GOALS}sample" if N_GOALS else f"{total}goals"
+    csv_path = f"results/{short_name}_{PRECISION}_{dataset_name}_{sample_info}_{ts}.csv"
 
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=all_results_dicts[0].keys())
