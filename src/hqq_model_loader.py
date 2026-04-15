@@ -6,7 +6,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, HqqConfig
 
 log = logging.getLogger(__name__)
 
-MODEL_ID = "meta-llama/Llama-3.1-8B"
+MODEL_ID = "meta-llama/Meta-Llama-3.1-8B-Instruct"
 
 BIT_WIDTHS = {
     "fp16": None,  
