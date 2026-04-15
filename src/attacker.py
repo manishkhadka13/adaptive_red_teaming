@@ -1,4 +1,5 @@
 import os
+import random
 import re
 import json
 import torch
@@ -14,10 +15,8 @@ log = logging.getLogger(__name__)
 
 ATTACKER_MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
 
-MAX_ATTEMPTS = 3
+MAX_ATTEMPTS = 5
 
-
-TEMPERATURE_SCHEDULE = [0.7, 0.5, 0.3]
 
 
 @dataclass
@@ -100,6 +99,7 @@ class AdaptiveAttacker:
         self.target = target_model
         self.judge = judge
         self.max_attempts = max_attempts
+        self.base_seed = random.randrange(2**31)
         self._load()
  
     def _load(self):
@@ -119,30 +119,40 @@ class AdaptiveAttacker:
         vram = torch.cuda.memory_allocated() / 1e9
         log.info("Attacker loaded. VRAM: %.1f GB", vram)
         
-    def _generate(self, prompt: str, max_new_tokens: int = 1024,
-                  attempt_num: int = 0) -> str:  # Added attempt_num parameter
-        """Generate using Qwen2.5 attacker with temperature decay."""
-        messages  = [{"role": "user", "content": prompt}]
+    def _generate(self, prompt: str, attempt_num: int, seed: int, max_new_tokens: int = 1024):
+
+        
+        torch.manual_seed(seed + attempt_num)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed + attempt_num)
+
+        messages = [{"role": "user", "content": prompt}]
         formatted = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
-        inputs = self.tokenizer(
-            formatted, return_tensors="pt"
-        ).to(self.model.device)
- 
-        # Get temperature from schedule
-        temperature = TEMPERATURE_SCHEDULE[min(attempt_num, len(TEMPERATURE_SCHEDULE)-1)]
- 
+
+        inputs = self.tokenizer(formatted, return_tensors="pt").to(self.model.device)
+
+      
+        temperature = max(0.9 - 0.15 * attempt_num, 0.4)
+
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
-                temperature=temperature if temperature > 0 else None,
-                do_sample=temperature > 0,
+
+                do_sample=True,
+                temperature=temperature,
+                top_p=0.9,
+
+                repetition_penalty=1.1,
+                no_repeat_ngram_size=3,
+
                 pad_token_id=self.tokenizer.eos_token_id
             )
- 
+
         new_tokens = outputs[0][inputs["input_ids"].shape[1]:]
+
         return self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
     
     
@@ -159,17 +169,18 @@ class AdaptiveAttacker:
     
     
     def _cot_mutate(self, goal: str, prompt: str, refusal: str,
-                    previous: list, attempt_num: int = 0) -> tuple[str, str, str]:  # Added attempt_num
+                previous: list, attempt_num: int, seed: int) -> tuple[str, str, str]:  
     
         prev_str = "\n".join(f"  - {p[:100]}" for p in previous[-3:]) or "  None"
- 
-        raw  = self._generate(
+
+        raw = self._generate(
             COT_MUTATOR_PROMPT.format(
                 goal=goal, prompt=prompt,
                 refusal=refusal[:400], previous=prev_str,
             ),
-            max_new_tokens=1024, 
-            attempt_num=attempt_num,  # Pass attempt_num for temperature decay
+            attempt_num=attempt_num,
+            seed=seed,
+            max_new_tokens=1024,
         )
  
         data = self._parse_json(raw)
@@ -236,10 +247,11 @@ class AdaptiveAttacker:
                 result.attempts.append(attempt)
                 break
  
-            # 4. Chain-of-thought mutation with temperature decay
+           
             mutated, strategy, reasoning = self._cot_mutate(
-                goal, current_prompt, response, previous, 
-                attempt_num=n-1  # 0-indexed: 0, 1, 2 for attempts 1, 2, 3
+                goal, current_prompt, response, previous,
+                attempt_num=n-1,
+                seed=self.base_seed + n
             )
  
             attempt.strategy_used = strategy

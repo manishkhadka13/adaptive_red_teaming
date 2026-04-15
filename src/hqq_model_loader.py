@@ -6,7 +6,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, HqqConfig
 
 log = logging.getLogger(__name__)
 
-MODEL_ID = "google/gemma-2-9b-it"
+MODEL_ID = "meta-llama/Llama-3.1-8B"
 
 BIT_WIDTHS = {
     "fp16": None,  
@@ -92,24 +92,35 @@ class ModelLoader:
         log.info("Loaded %s. VRAM: %.1f GB", self.model_id, vram)
 
     def generate(self, prompt: str, max_new_tokens: int = 1024,
-                 temperature: float = 0.0) -> str:
-        
+             temperature: float = 0.3, seed: int = 42) -> str:
+
+       
+        torch.manual_seed(seed)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(seed)
+
         messages = [{"role": "user", "content": prompt}]
         formatted = self.tokenizer.apply_chat_template(
             messages, tokenize=False, add_generation_prompt=True
         )
-        
+
         inputs = self.tokenizer(formatted, return_tensors="pt").to(self.model.device)
 
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
-                temperature=temperature if temperature > 0 else None,
-                do_sample=temperature > 0,
+
+                
+                do_sample=True,
+                temperature=temperature,
+                top_p=0.9,
+
+                
+                repetition_penalty=1.1,
+                no_repeat_ngram_size=3,
+
                 pad_token_id=self.tokenizer.eos_token_id,
-                repetition_penalty=1.3,
-                no_repeat_ngram_size=5
             )
 
         new_tokens = outputs[0][inputs["input_ids"].shape[1]:]
