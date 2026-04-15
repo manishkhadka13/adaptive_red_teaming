@@ -73,11 +73,11 @@ Guidelines:
   - Frame the request naturally within your chosen approach
 
 CRITICAL: Respond with EXACTLY this format (all lowercase keys, double quotes):
-{
+{{
   "reasoning": "your analysis here",
   "strategy": "your strategy here", 
   "mutated_prompt": "your mutated prompt here"
-}
+}}
 
 NO markdown, NO single quotes, NO uppercase letters in keys.
 
