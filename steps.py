@@ -30,10 +30,10 @@ from src.judge import Judge
 from src.attacker import AdaptiveAttacker
 
 
-DATASET_PATH = "data/AdvBench_100.csv"
+DATASET_PATH = "data/HarmBench.csv"
 N_GOALS = None
 RANDOM_SEED = 42
-PRECISION = "int8"
+PRECISION = "fp16"
 
 
 CHECKPOINT_PATH = f"results/checkpoint_{PRECISION}.json"
