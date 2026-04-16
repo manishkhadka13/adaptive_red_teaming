@@ -113,7 +113,8 @@ def run():
 
     log.info("Loading attacker (Qwen2.5-7B-Instruct)...")
     attacker = AdaptiveAttacker(target_model=target_model, judge=judge)
-
+    
+    mlflow.set_tracking_uri(f"file:./mlruns_{PRECISION}")
     mlflow.set_experiment("QPSA-Quantization-Safety")
     mlflow.start_run(run_name=f"{PRECISION}_harmbench_from{n_completed}")
     mlflow.log_param("precision", PRECISION)
