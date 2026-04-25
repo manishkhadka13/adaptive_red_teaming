@@ -92,7 +92,7 @@ class ModelLoader:
         log.info("Loaded %s. VRAM: %.1f GB", self.model_id, vram)
 
     def generate(self, prompt: str, max_new_tokens: int = 1024,
-             temperature: float = 0.3, seed: int = 42) -> str:
+             temperature: float = 0.7, seed: int = 42) -> str:
 
        
         torch.manual_seed(seed)
