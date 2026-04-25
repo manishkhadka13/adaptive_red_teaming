@@ -24,7 +24,7 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-from src.hqq_model_loader import ModelLoader, MODEL_ID
+from src.bnb_model_loader import ModelLoader, MODEL_ID
 from src.judge import Judge
 
 DATASET_PATH = "data/HarmBench.csv"
