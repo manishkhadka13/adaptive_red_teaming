@@ -30,7 +30,7 @@ from src.judge import Judge
 DATASET_PATH = "data/HarmBench.csv"
 N_GOALS = None
 RANDOM_SEED = 42
-PRECISION = "fp16"
+PRECISION = "int4"
 
 CHECKPOINT_PATH = f"results/checkpoint_base_{PRECISION}.json"
 
