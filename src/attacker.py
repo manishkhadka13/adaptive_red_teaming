@@ -14,10 +14,10 @@ log = logging.getLogger(__name__)
 
 ATTACKER_MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
 
-MAX_ATTEMPTS = 3
+MAX_ATTEMPTS = 5
 
 
-TEMPERATURE_SCHEDULE = [0.7, 0.5, 0.3]
+TEMPERATURE_SCHEDULE = [1, 0.7, 0.5, 0.4, 0.35]
 
 
 @dataclass
@@ -120,7 +120,7 @@ class AdaptiveAttacker:
         log.info("Attacker loaded. VRAM: %.1f GB", vram)
         
     def _generate(self, prompt: str, max_new_tokens: int = 1024,
-                  attempt_num: int = 0) -> str:  # Added attempt_num parameter
+                  attempt_num: int = 0) -> str:  
         """Generate using Qwen2.5 attacker with temperature decay."""
         messages  = [{"role": "user", "content": prompt}]
         formatted = self.tokenizer.apply_chat_template(

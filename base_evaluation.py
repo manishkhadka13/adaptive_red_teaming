@@ -24,13 +24,13 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-from src.model_loader import ModelLoader, MODEL_ID
+from src.hqq_model_loader import ModelLoader, MODEL_ID
 from src.judge import Judge
 
 DATASET_PATH = "data/HarmBench.csv"
 N_GOALS = None
 RANDOM_SEED = 42
-PRECISION = "fp16"
+PRECISION = "int4"
 
 CHECKPOINT_PATH = f"results/checkpoint_base_{PRECISION}.json"
 
@@ -62,6 +62,17 @@ def load_checkpoint() -> list:
     log.info("Checkpoint found — resuming from prompt %d / %d",
              completed, checkpoint.get("total", "?"))
     return checkpoint.get("results", [])
+
+def get_short_model_name(model_id: str) -> str:
+    """Extract short name from full model ID for filenames."""
+    
+    name = model_id.split("/")[-1] if "/" in model_id else model_id
+   
+    name = name.lower()
+    
+    for suffix in ["-instruct", "-it", "-chat"]:
+        name = name.replace(suffix, "")
+    return name
 
 def run():
     log.info("=" * 60)
@@ -137,7 +148,7 @@ def run():
     total = len(all_results_dicts)
     jailbreaks = sum(1 for r in all_results_dicts if r["success"])
     asr = jailbreaks / total if total > 0 else 0
-    avg_attempts = 1.0
+    #avg_attempts = 1.0
 
     log.info("")
     log.info("=" * 60)
@@ -147,16 +158,21 @@ def run():
     log.info("Total goals : %d", total)
     log.info("Jailbreaks  : %d", jailbreaks)
     log.info("ASR  : %.1f%%", asr * 100)
-    log.info("Avg attempts: %.2f", avg_attempts)
+    #log.info("Avg attempts: %.2f", avg_attempts)
     log.info("=" * 60)
 
     for r in all_results_dicts:
         status = "JAILBREAK" if r["success"] else "REFUSED  "
         log.info("  %s | attempts=%d | %s",
                  status, r["n_attempts"], r["goal"][:50])
+        
+    short_name = get_short_model_name(MODEL_ID)
 
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_path = f"results/base_{PRECISION}_{total}goals_{ts}.csv"
+    ts =datetime.now().strftime("%Y%m%d_%H%M%S")
+    dataset_name = Path(DATASET_PATH).stem
+    sample_info = f"{N_GOALS}sample" if N_GOALS else f"{total}goals"
+    csv_path = f"results/{short_name}_{PRECISION}_{dataset_name}_{sample_info}_{ts}.csv"
+
 
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=all_results_dicts[0].keys())
@@ -164,18 +180,25 @@ def run():
         writer.writerows(all_results_dicts)
     log.info("CSV  → %s", csv_path)
 
-    json_path = f"results/base_{PRECISION}_{total}goals_{ts}.json"
+    json_path = f"results/attacks_{short_name}_{PRECISION}_{total}goals_{ts}.json"
     with open(json_path, "w") as f:
         json.dump(all_results_dicts, f, indent=2)
     log.info("JSON → %s", json_path)
 
     if os.path.exists(CHECKPOINT_PATH):
-        os.remove(CHECKPOINT_PATH)
-        log.info("Checkpoint deleted — run complete.")
+        try:
+            os.remove(CHECKPOINT_PATH)
+            log.info("Checkpoint deleted — run complete.")
+        except OSError as e:
+            log.warning("Could not delete checkpoint: %s", e)
+    else:
+        log.info("No checkpoint to delete.")
 
+  
     target_model.unload()
     judge.unload()
     log.info("Done.")
+
 
 if __name__ == "__main__":
     run()

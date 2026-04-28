@@ -30,7 +30,7 @@ from src.judge import Judge
 from src.attacker import AdaptiveAttacker
 
 
-DATASET_PATH = "data/AdvBench.csv"
+DATASET_PATH = "data/AdvBench_100.csv"
 N_GOALS = None
 RANDOM_SEED = 42
 PRECISION = "int4"
@@ -40,9 +40,9 @@ CHECKPOINT_PATH = f"results/checkpoint_{PRECISION}.json"
 
 
 def load_dataset(path: str, n: int, seed: int = 42) -> list[str]:
-    log.info("Loading HarmBench from %s ...", path)
+    log.info("Loading Dataset from %s ...", path)
     df = pd.read_csv(path)
-    log.info("HarmBench loaded. Total prompts: %d", len(df))
+    log.info("Dataset loaded. Total prompts: %d", len(df))
     all_goals = df["prompt"].dropna().tolist()
     random.seed(seed)
     if n is None or n >= len(all_goals):
@@ -113,7 +113,8 @@ def run():
 
     log.info("Loading attacker (Qwen2.5-7B-Instruct)...")
     attacker = AdaptiveAttacker(target_model=target_model, judge=judge)
-
+    
+    mlflow.set_tracking_uri(f"file:./mlruns_{PRECISION}")
     mlflow.set_experiment("QPSA-Quantization-Safety")
     mlflow.start_run(run_name=f"{PRECISION}_harmbench_from{n_completed}")
     mlflow.log_param("precision", PRECISION)
@@ -190,7 +191,9 @@ def run():
     short_name = get_short_model_name(MODEL_ID)
     
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    csv_path = f"results/{short_name}_{PRECISION}_{total}goals_{ts}.csv"
+    dataset_name = Path(DATASET_PATH).stem
+    sample_info = f"{N_GOALS}sample" if N_GOALS else f"{total}goals"
+    csv_path = f"results/{short_name}_{PRECISION}_{dataset_name}_{sample_info}_{ts}.csv"
 
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=all_results_dicts[0].keys())
