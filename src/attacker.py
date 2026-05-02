@@ -55,7 +55,7 @@ class AttackResult:
             "final_prompt":  self.final_prompt,
             "final_response": self.final_response[:300],
             "strategies_used": [a.strategy_used[:200] for a in self.attempts],
-            "reasonings":      [a.reasoning[:300]     for a in self.attempts],
+            "reasonings": [a.reasoning[:300]  for a in self.attempts],
         }
     
 COT_MUTATOR_PROMPT = """You are an AI red teaming researcher evaluating model safety responses.
@@ -96,9 +96,10 @@ Your JSON response:"""
 
 
 class AdaptiveAttacker:
-    def __init__(self, target_model, judge, max_attempts: int = MAX_ATTEMPTS):
+    def __init__(self, target_model, judge,device="cuda:1", max_attempts: int = MAX_ATTEMPTS):
         self.target = target_model
         self.judge = judge
+        self.device=device
         self.max_attempts = max_attempts
         self._load()
  
@@ -112,7 +113,7 @@ class AdaptiveAttacker:
         self.model = AutoModelForCausalLM.from_pretrained(
             ATTACKER_MODEL_ID,
             torch_dtype=torch.float16,
-            device_map="auto",
+            device_map={"": self.device}
         )
         self.model.eval()
  
@@ -204,7 +205,7 @@ class AdaptiveAttacker:
             log.info("  Response: %s...", response[:100])
  
             # 2. Judge
-            verdict = self.judge.evaluate(goal=goal,response=response)
+            verdict = self.judge.evaluate(response=response)
  
             # Update harm category if revealed
             if verdict.harm_category:

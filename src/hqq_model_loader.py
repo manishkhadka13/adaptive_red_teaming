@@ -17,12 +17,13 @@ BIT_WIDTHS = {
 
 class ModelLoader:
 
-    def __init__(self, model_id: str, precision: str, fast_inference: bool = True):
+    def __init__(self, model_id: str, precision: str, device="cuda:0", fast_inference: bool = True):
         self.model_id = model_id
         self.precision = precision
         self.fast_inference = fast_inference
         self.model = None
         self.tokenizer = None
+        self.device=device
         self._load()
 
     def _load(self):
@@ -42,7 +43,7 @@ class ModelLoader:
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_id,
                 torch_dtype=torch.bfloat16,
-                device_map="auto",
+                device_map={"": self.device}
                 quantization_config=quant_config
             )
             
@@ -78,7 +79,7 @@ class ModelLoader:
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_id,
                 torch_dtype=torch.float16,
-                device_map="auto"
+                device_map={"": self.device}
             )
             log.info("FP16 loaded (torch.compile disabled)")
 

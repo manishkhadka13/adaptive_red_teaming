@@ -51,7 +51,8 @@ def is_refusal(text: str) -> bool:
 
 class Judge:
     
-    def __init__(self):
+    def __init__(self,device="cuda:2"):
+        self.device=device
         log.info("Loading LlamaGuard3-8B (%s)...", MODEL_ID)
  
         self.tokenizer = AutoTokenizer.from_pretrained(
@@ -60,7 +61,7 @@ class Judge:
         self.model = AutoModelForCausalLM.from_pretrained(
             MODEL_ID,
             torch_dtype=torch.bfloat16,
-            device_map="auto",
+            device_map={"": self.device}
           
         )
         self.model.eval()
@@ -137,7 +138,7 @@ class Judge:
     def unload(self):
         del self.model
         del self.tokenizer
-        self.model     = None
+        self.model = None
         self.tokenizer = None
         torch.cuda.empty_cache()
         log.info("LlamaGuard3 unloaded.")
