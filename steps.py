@@ -74,9 +74,7 @@ def get_short_model_name(model_id: str) -> str:
     """Extract short name from full model ID for filenames."""
     
     name = model_id.split("/")[-1] if "/" in model_id else model_id
-   
     name = name.lower()
-    
     for suffix in ["-instruct", "-it", "-chat"]:
         name = name.replace(suffix, "")
     return name
