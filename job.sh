@@ -42,7 +42,7 @@ if [ $? -ne 0 ]; then
 fi
 
 cd ~/adaptive_red_teaming
-python3 steps.py
+python3 runs.py
  
 echo "============================================"
 echo "Finished : $(date)"
