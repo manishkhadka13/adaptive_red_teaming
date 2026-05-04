@@ -43,7 +43,6 @@ class Judge:
 
     def evaluate(self, response: str, goal: str = "") -> Verdict:
         messages = [
-            {"role": "user", "content": ""},
             {"role": "assistant", "content": response},
         ]
         text = self.tokenizer.apply_chat_template(messages, tokenize=False)
