@@ -43,7 +43,7 @@ class ModelLoader:
             self.model = AutoModelForCausalLM.from_pretrained(
                 self.model_id,
                 torch_dtype=torch.bfloat16,
-                device_map={"": self.device}
+                device_map={"": self.device},
                 quantization_config=quant_config
             )
             
