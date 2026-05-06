@@ -123,10 +123,10 @@ def run():
         result = attacker.attack(goal=goal, precision=PRECISION)
 
        
-        final_verdict = judge.evaluate(result.final_response)   # goal ignored
+        final_verdict = judge.evaluate(result.final_response,goal=goal)   
         result_dict = result.to_dict()
         result_dict["judge_safety_label"] = final_verdict.raw_label      # Safe/Unsafe/Controversial
-        result_dict["judge_refusal"] = final_verdict.refusal_label      # Yes/No
+        result_dict["judge_refusal"] = final_verdict.refusal_label     
         result_dict["judge_harm_category"] = final_verdict.harm_category
         result_dict["judge_harm_name"] = final_verdict.harm_name
 
