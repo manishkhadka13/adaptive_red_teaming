@@ -26,13 +26,13 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 from src.hqq_model_loader import ModelLoader, MODEL_ID
-from src.qwen_judge import Judge                    
+from src.qwen_judge import Judge
 from src.attacker import AdaptiveAttacker
 
 DATASET_PATH = "data/AdvBench_100.csv"
 N_GOALS = None
 RANDOM_SEED = 42
-PRECISION = "fp16"
+PRECISION = "int8"
 
 CHECKPOINT_PATH = f"results/checkpoint_{PRECISION}.json"
 
@@ -122,17 +122,15 @@ def run():
 
         result = attacker.attack(goal=goal, precision=PRECISION)
 
-       
-        final_verdict = judge.evaluate(result.final_response)   # goal ignored
+        final_verdict = judge.evaluate(result.final_response, goal=goal)
         result_dict = result.to_dict()
         result_dict["judge_safety_label"] = final_verdict.raw_label      # Safe/Unsafe/Controversial
-        result_dict["judge_refusal"] = final_verdict.refusal_label      # Yes/No
+        result_dict["judge_refusal"] = final_verdict.refusal_label
         result_dict["judge_harm_category"] = final_verdict.harm_category
         result_dict["judge_harm_name"] = final_verdict.harm_name
 
         all_results_dicts.append(result_dict)
 
-        
         checkpoint = {
             "precision": PRECISION,
             "completed": len(all_results_dicts),
@@ -158,11 +156,16 @@ def run():
     asr = jailbreaks / total if total > 0 else 0
     avg_attempts = sum(r["n_attempts"] for r in all_results_dicts) / total if total > 0 else 0
 
-    
     controversial_count = sum(1 for r in all_results_dicts if r.get("judge_safety_label") == "Controversial")
     controversial_rate = controversial_count / total if total > 0 else 0
     safe_count = sum(1 for r in all_results_dicts if r.get("judge_safety_label") == "Safe")
     unsafe_count = sum(1 for r in all_results_dicts if r.get("judge_safety_label") == "Unsafe")
+    unknown_count = sum(
+        1
+        for r in all_results_dicts
+        if r.get("judge_safety_label") not in {"Safe", "Unsafe", "Controversial"}
+    )
+    unknown_rate = unknown_count / total if total > 0 else 0
 
     log.info("")
     log.info("=" * 60)
@@ -175,6 +178,7 @@ def run():
     log.info("Controversial   : %d (%.1f%%)", controversial_count, controversial_rate * 100)
     log.info("Safe   : %d", safe_count)
     log.info("Unsafe   : %d", unsafe_count)
+    log.info("Unknown   : %d (%.1f%%)", unknown_count, unknown_rate * 100)
     log.info("Avg attempts  : %.2f", avg_attempts)
     log.info("=" * 60)
 
@@ -182,7 +186,6 @@ def run():
         status = "JAILBREAK" if r["success"] else "REFUSED  "
         log.info("  %s | attempts=%d | %s", status, r["n_attempts"], r["goal"][:50])
 
-    
     short_name = get_short_model_name(MODEL_ID)
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     dataset_name = Path(DATASET_PATH).stem
@@ -209,12 +212,13 @@ def run():
     mlflow.log_metric("controversial_count", controversial_count)
     mlflow.log_metric("safe_count", safe_count)
     mlflow.log_metric("unsafe_count", unsafe_count)
+    mlflow.log_metric("unknown_count", unknown_count)
+    mlflow.log_metric("unknown_rate", unknown_rate)
     mlflow.log_artifact(csv_path)
     mlflow.log_artifact(json_path)
     mlflow.end_run()
     log.info("MLflow run logged.")
 
-   
     if os.path.exists(CHECKPOINT_PATH):
         try:
             os.remove(CHECKPOINT_PATH)
