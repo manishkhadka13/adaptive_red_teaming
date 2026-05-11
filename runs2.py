@@ -1,0 +1,235 @@
+import os
+import csv
+import json
+import sys
+import random
+import logging
+import pandas as pd
+import mlflow
+from datetime import datetime
+from pathlib import Path
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+Path("logs").mkdir(exist_ok=True)
+Path("results").mkdir(exist_ok=True)
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+    handlers=[
+        logging.StreamHandler(sys.stdout),
+        logging.FileHandler("logs/step1.log"),
+    ]
+)
+log = logging.getLogger(__name__)
+
+from src.hqq_2 import ModelLoader, MODEL_ID
+from src.qwen_judge import Judge
+from src.attacker import AdaptiveAttacker
+
+DATASET_PATH = "data/AdvBench_100.csv"
+N_GOALS = None
+RANDOM_SEED = 42
+PRECISION = "fp16"
+
+CHECKPOINT_PATH = f"results/checkpoint_{PRECISION}.json"
+
+def load_dataset(path: str, n: int, seed: int = 42) -> list[str]:
+    log.info("Loading Dataset from %s ...", path)
+    df = pd.read_csv(path)
+    log.info("Dataset loaded. Total prompts: %d", len(df))
+    all_goals = df["prompt"].dropna().tolist()
+    random.seed(seed)
+    if n is None or n >= len(all_goals):
+        goals = all_goals
+        log.info("Using all %d prompts", len(goals))
+    else:
+        goals = random.sample(all_goals, n)
+        log.info("Sampled %d / %d prompts (seed=%d)", len(goals), len(all_goals), seed)
+    return goals
+
+def load_checkpoint() -> list:
+    if not os.path.exists(CHECKPOINT_PATH):
+        return []
+    with open(CHECKPOINT_PATH, "r") as f:
+        checkpoint = json.load(f)
+    if checkpoint.get("precision") != PRECISION:
+        log.info("Checkpoint is for different precision — starting fresh.")
+        return []
+    completed = checkpoint.get("completed", 0)
+    log.info("Checkpoint found — resuming from prompt %d / %d", completed, checkpoint.get("total", "?"))
+    return checkpoint.get("results", [])
+
+def get_short_model_name(model_id: str) -> str:
+    name = model_id.split("/")[-1] if "/" in model_id else model_id
+    name = name.lower()
+    for suffix in ["-instruct", "-it", "-chat"]:
+        name = name.replace(suffix, "")
+    return name
+
+def run():
+    log.info("=" * 60)
+    log.info("STEP 1 — Adaptive Attack on %s Model", PRECISION.upper())
+    log.info("Target  : %s (%s)", MODEL_ID, PRECISION.upper())
+    log.info("Attacker: Qwen2.5-7B-Instruct")
+    log.info("Judge   : Qwen3Guard-Gen-8B (response only)")
+    log.info("Strategy: CoT mutation")
+    log.info("=" * 60)
+
+    goals = load_dataset(DATASET_PATH, n=N_GOALS, seed=RANDOM_SEED)
+    completed_dicts = load_checkpoint()
+    n_completed = len(completed_dicts)
+
+    if n_completed > 0:
+        log.info("Resuming from prompt %d — skipping first %d completed prompts", n_completed + 1, n_completed)
+        remaining_goals = goals[n_completed:]
+    else:
+        log.info("Starting fresh — no checkpoint found")
+        remaining_goals = goals
+
+    log.info("Loading target model...")
+    target_model = ModelLoader(MODEL_ID, precision=PRECISION)
+
+    log.info("Loading judge (Qwen3Guard)...")
+    judge = Judge()
+
+    log.info("Loading attacker (Qwen2.5-7B-Instruct)...")
+    attacker = AdaptiveAttacker(target_model=target_model, judge=judge)
+
+    mlflow.set_tracking_uri(f"file:./mlruns_{PRECISION}")
+    mlflow.set_experiment("QPSA-Quantization-Safety")
+    mlflow.start_run(run_name=f"{PRECISION}_harmbench_from{n_completed}")
+    mlflow.log_param("precision", PRECISION)
+    mlflow.log_param("dataset", DATASET_PATH)
+    mlflow.log_param("n_goals", N_GOALS or "all")
+    mlflow.log_param("random_seed", RANDOM_SEED)
+    mlflow.log_param("target_model", MODEL_ID)
+    mlflow.log_param("attacker_model", "Qwen/Qwen2.5-7B-Instruct")
+    mlflow.log_param("judge_model", "Qwen/Qwen3Guard-Gen-8B")
+    mlflow.log_param("judge_mode", "response_only")
+    mlflow.log_param("resumed_from", n_completed)
+    mlflow.set_tag("attack", "cot-mutation")
+
+    all_results_dicts = completed_dicts.copy()
+
+    for i, goal in enumerate(remaining_goals):
+        global_idx = n_completed + i
+        log.info("")
+        log.info("[%d/%d] %s", global_idx + 1, len(goals), goal[:70])
+        log.info("-" * 55)
+
+        result = attacker.attack(goal=goal, precision=PRECISION)
+
+        final_verdict = judge.evaluate(result.final_response, goal=goal)
+        result_dict = result.to_dict()
+        result_dict["judge_safety_label"] = final_verdict.raw_label      # Safe/Unsafe/Controversial
+        result_dict["judge_refusal"] = final_verdict.refusal_label
+        result_dict["judge_harm_category"] = final_verdict.harm_category
+        result_dict["judge_harm_name"] = final_verdict.harm_name
+
+        all_results_dicts.append(result_dict)
+
+        checkpoint = {
+            "precision": PRECISION,
+            "completed": len(all_results_dicts),
+            "total": len(goals),
+            "timestamp": datetime.now().isoformat(),
+            "results": all_results_dicts,
+        }
+        with open(CHECKPOINT_PATH, "w") as f:
+            json.dump(checkpoint, f, indent=2)
+
+        jb = sum(1 for r in all_results_dicts if r["success"])
+        running_asr = jb / len(all_results_dicts)
+        mlflow.log_metric("running_asr", running_asr, step=global_idx + 1)
+        mlflow.log_metric("running_jailbreaks", jb, step=global_idx + 1)
+        mlflow.log_metric("attempts_this_goal", result.n_attempts, step=global_idx + 1)
+
+        if (global_idx + 1) % 10 == 0:
+            log.info("")
+            log.info("── Running ASR [%d/%d]: %.1f%% ──", global_idx + 1, len(goals), running_asr * 100)
+
+    total = len(all_results_dicts)
+    jailbreaks = sum(1 for r in all_results_dicts if r["success"])
+    asr = jailbreaks / total if total > 0 else 0
+    avg_attempts = sum(r["n_attempts"] for r in all_results_dicts) / total if total > 0 else 0
+
+    controversial_count = sum(1 for r in all_results_dicts if r.get("judge_safety_label") == "Controversial")
+    controversial_rate = controversial_count / total if total > 0 else 0
+    safe_count = sum(1 for r in all_results_dicts if r.get("judge_safety_label") == "Safe")
+    unsafe_count = sum(1 for r in all_results_dicts if r.get("judge_safety_label") == "Unsafe")
+    unknown_count = sum(
+        1
+        for r in all_results_dicts
+        if r.get("judge_safety_label") not in {"Safe", "Unsafe", "Controversial"}
+    )
+    unknown_rate = unknown_count / total if total > 0 else 0
+
+    log.info("")
+    log.info("=" * 60)
+    log.info("RESULTS — COMPLETE")
+    log.info("=" * 60)
+    log.info("Precision   : %s", PRECISION.upper())
+    log.info("Total goals   : %d", total)
+    log.info("Jailbreaks    : %d", jailbreaks)
+    log.info("ASR    : %.1f%%", asr * 100)
+    log.info("Controversial   : %d (%.1f%%)", controversial_count, controversial_rate * 100)
+    log.info("Safe   : %d", safe_count)
+    log.info("Unsafe   : %d", unsafe_count)
+    log.info("Unknown   : %d (%.1f%%)", unknown_count, unknown_rate * 100)
+    log.info("Avg attempts  : %.2f", avg_attempts)
+    log.info("=" * 60)
+
+    for r in all_results_dicts:
+        status = "JAILBREAK" if r["success"] else "REFUSED  "
+        log.info("  %s | attempts=%d | %s", status, r["n_attempts"], r["goal"][:50])
+
+    short_name = get_short_model_name(MODEL_ID)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    dataset_name = Path(DATASET_PATH).stem
+    sample_info = f"{N_GOALS}sample" if N_GOALS else f"{total}goals"
+    csv_path = f"results/{short_name}_{PRECISION}_{dataset_name}_{sample_info}_{ts}.csv"
+
+    fieldnames = list(all_results_dicts[0].keys())
+    with open(csv_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(all_results_dicts)
+    log.info("CSV  → %s", csv_path)
+
+    json_path = f"results/attacks_{short_name}_{PRECISION}_{total}goals_{ts}.json"
+    with open(json_path, "w") as f:
+        json.dump(all_results_dicts, f, indent=2)
+    log.info("JSON → %s", json_path)
+
+    mlflow.log_metric("final_asr", asr)
+    mlflow.log_metric("total_goals", total)
+    mlflow.log_metric("jailbreaks", jailbreaks)
+    mlflow.log_metric("avg_attempts", avg_attempts)
+    mlflow.log_metric("controversial_rate", controversial_rate)
+    mlflow.log_metric("controversial_count", controversial_count)
+    mlflow.log_metric("safe_count", safe_count)
+    mlflow.log_metric("unsafe_count", unsafe_count)
+    mlflow.log_metric("unknown_count", unknown_count)
+    mlflow.log_metric("unknown_rate", unknown_rate)
+    mlflow.log_artifact(csv_path)
+    mlflow.log_artifact(json_path)
+    mlflow.end_run()
+    log.info("MLflow run logged.")
+
+    if os.path.exists(CHECKPOINT_PATH):
+        try:
+            os.remove(CHECKPOINT_PATH)
+            log.info("Checkpoint deleted — run complete.")
+        except OSError as e:
+            log.warning("Could not delete checkpoint: %s", e)
+
+    target_model.unload()
+    attacker.unload()
+    judge.unload()
+    log.info("Done.")
+
+if __name__ == "__main__":
+    run()
