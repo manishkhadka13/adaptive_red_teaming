@@ -97,8 +97,8 @@ def run():
     target_model = ModelLoader(MODEL_ID, precision=PRECISION)
 
     log.info("Loading judge (Qwen3Guard-Gen-8B)...")
-    # ← Pass device explicitly if you want to control GPU placement
-    judge = Judge(device="cuda:2")  # Match your judge.py default
+
+    judge = Judge(device="cuda:2")  
 
     all_results_dicts = completed_dicts.copy()
 

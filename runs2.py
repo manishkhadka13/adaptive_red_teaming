@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import csv
 import json
@@ -6,6 +7,7 @@ import random
 import logging
 import pandas as pd
 import mlflow
+import torch  
 from datetime import datetime
 from pathlib import Path
 
@@ -28,6 +30,54 @@ log = logging.getLogger(__name__)
 from src.hqq_2 import ModelLoader, MODEL_ID
 from src.qwen_judge import Judge
 from src.attacker import AdaptiveAttacker
+
+
+def probe_healthy_gpus(min_free_gb: float = 4.0, compute_test: bool = True) -> list[int]:
+    """
+    Scan visible GPUs and return indices that are:
+    1. Accessible (no driver/ECC faults)
+    2. Have ≥ min_free_gb VRAM
+    3. Pass a tiny alloc+compute stability test
+    """
+    if not torch.cuda.is_available():
+        log.warning("No CUDA devices detected")
+        return []
+    
+    healthy = []
+    for idx in range(torch.cuda.device_count()):
+        try:
+            
+            _ = torch.cuda.get_device_properties(idx)
+            
+           
+            free, total = torch.cuda.mem_get_info(idx)
+            free_gb = free / (1024**3)
+            if free_gb < min_free_gb:
+                log.debug(f"GPU {idx}: Skipped ({free_gb:.1f}GB free < {min_free_gb}GB)")
+                continue
+            
+            
+            if compute_test:
+                with torch.cuda.device(idx):
+                    t = torch.randn(256, 256, dtype=torch.float16, device=f"cuda:{idx}")
+                    _ = (t @ t.T).sum()
+                    torch.cuda.synchronize(idx)
+                    del t
+                    torch.cuda.empty_cache()
+            
+            healthy.append(idx)
+            log.info(f"GPU {idx}: Healthy ({free_gb:.1f}GB free)")
+            
+        except Exception as e:
+            err = str(e).lower()
+            if "ecc" in err or "uncorrectable" in err or "invalid device" in err:
+                log.warning(f"GPU {idx}: Hardware fault (ECC/driver error)")
+            else:
+                log.warning(f"GPU {idx}: Unavailable → {type(e).__name__}: {e}")
+            continue
+    
+    return healthy
+
 
 DATASET_PATH = "data/AdvBench_100.csv"
 N_GOALS = None
@@ -89,14 +139,26 @@ def run():
         log.info("Starting fresh — no checkpoint found")
         remaining_goals = goals
 
+   
+    healthy = probe_healthy_gpus(min_free_gb=8.0) 
+    if len(healthy) < 2:
+        raise RuntimeError(f"Need ≥2 healthy GPUs for target+judge, found {len(healthy)}: {healthy}")
+    
+    target_device = f"cuda:{healthy[0]}"
+    attacker_device = target_device  
+    judge_device = f"cuda:{healthy[1]}"
+    
+    log.info(f"🎯 Device assignment → Target/Attacker: {target_device} | Judge: {judge_device}")
+   
+
     log.info("Loading target model...")
-    target_model = ModelLoader(MODEL_ID, precision=PRECISION)
+    target_model = ModelLoader(MODEL_ID, precision=PRECISION, device=target_device)  # ← Override default
 
     log.info("Loading judge (Qwen3Guard)...")
-    judge = Judge()
+    judge = Judge(device=judge_device)  
 
     log.info("Loading attacker (Qwen2.5-7B-Instruct)...")
-    attacker = AdaptiveAttacker(target_model=target_model, judge=judge)
+    attacker = AdaptiveAttacker(target_model=target_model, judge=judge, device=attacker_device) 
 
     mlflow.set_tracking_uri(f"file:./mlruns_{PRECISION}")
     mlflow.set_experiment("QPSA-Quantization-Safety")
@@ -110,6 +172,10 @@ def run():
     mlflow.log_param("judge_model", "Qwen/Qwen3Guard-Gen-8B")
     mlflow.log_param("judge_mode", "response_only")
     mlflow.log_param("resumed_from", n_completed)
+    # Log GPU assignment for reproducibility
+    mlflow.log_param("target_device", target_device)
+    mlflow.log_param("judge_device", judge_device)
+    mlflow.log_param("healthy_gpus", str(healthy))
     mlflow.set_tag("attack", "cot-mutation")
 
     all_results_dicts = completed_dicts.copy()
