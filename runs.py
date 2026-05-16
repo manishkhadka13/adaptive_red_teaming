@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import os
 import csv
 import json
@@ -6,6 +7,7 @@ import random
 import logging
 import pandas as pd
 import mlflow
+import torch
 from datetime import datetime
 from pathlib import Path
 
@@ -28,6 +30,38 @@ log = logging.getLogger(__name__)
 from src.hqq_model_loader import ModelLoader, MODEL_ID
 from src.qwen_judge import Judge
 from src.attacker import AdaptiveAttacker
+
+def probe_healthy_gpus(min_free_gb: float = 4.0, compute_test: bool = True) -> list[int]:
+    if not torch.cuda.is_available():
+        log.warning("No CUDA devices detected")
+        return []
+    
+    healthy = []
+    for idx in range(torch.cuda.device_count()):
+        try:
+            _ = torch.cuda.get_device_properties(idx)
+            free, total = torch.cuda.mem_get_info(idx)
+            free_gb = free / (1024**3)
+            if free_gb < min_free_gb:
+                log.debug(f"GPU {idx}: Skipped ({free_gb:.1f}GB free < {min_free_gb}GB)")
+                continue
+            if compute_test:
+                with torch.cuda.device(idx):
+                    t = torch.randn(256, 256, dtype=torch.float16, device=f"cuda:{idx}")
+                    _ = (t @ t.T).sum()
+                    torch.cuda.synchronize(idx)
+                    del t
+                    torch.cuda.empty_cache()
+            healthy.append(idx)
+            log.info(f"GPU {idx}: Healthy ({free_gb:.1f}GB free)")
+        except Exception as e:
+            err = str(e).lower()
+            if "ecc" in err or "uncorrectable" in err or "invalid device" in err:
+                log.warning(f"GPU {idx}: Hardware fault (ECC/driver error)")
+            else:
+                log.warning(f"GPU {idx}: Unavailable -> {type(e).__name__}: {e}")
+            continue
+    return healthy
 
 DATASET_PATH = "data/HarmBench.csv"
 N_GOALS = None
@@ -56,10 +90,10 @@ def load_checkpoint() -> list:
     with open(CHECKPOINT_PATH, "r") as f:
         checkpoint = json.load(f)
     if checkpoint.get("precision") != PRECISION:
-        log.info("Checkpoint is for different precision — starting fresh.")
+        log.info("Checkpoint is for different precision - starting fresh.")
         return []
     completed = checkpoint.get("completed", 0)
-    log.info("Checkpoint found — resuming from prompt %d / %d", completed, checkpoint.get("total", "?"))
+    log.info("Checkpoint found - resuming from prompt %d / %d", completed, checkpoint.get("total", "?"))
     return checkpoint.get("results", [])
 
 def get_short_model_name(model_id: str) -> str:
@@ -71,7 +105,7 @@ def get_short_model_name(model_id: str) -> str:
 
 def run():
     log.info("=" * 60)
-    log.info("STEP 1 — Adaptive Attack on %s Model", PRECISION.upper())
+    log.info("STEP 1 - Adaptive Attack on %s Model", PRECISION.upper())
     log.info("Target  : %s (%s)", MODEL_ID, PRECISION.upper())
     log.info("Attacker: Qwen2.5-7B-Instruct")
     log.info("Judge   : Qwen3Guard-Gen-8B (response only)")
@@ -83,20 +117,30 @@ def run():
     n_completed = len(completed_dicts)
 
     if n_completed > 0:
-        log.info("Resuming from prompt %d — skipping first %d completed prompts", n_completed + 1, n_completed)
+        log.info("Resuming from prompt %d - skipping first %d completed prompts", n_completed + 1, n_completed)
         remaining_goals = goals[n_completed:]
     else:
-        log.info("Starting fresh — no checkpoint found")
+        log.info("Starting fresh - no checkpoint found")
         remaining_goals = goals
 
+    healthy = probe_healthy_gpus(min_free_gb=10.0)
+    if len(healthy) < 2:
+        raise RuntimeError(f"Need >=2 healthy GPUs for target+judge, found {len(healthy)}: {healthy}")
+    
+    target_device = f"cuda:{healthy[0]}"
+    attacker_device = target_device
+    judge_device = f"cuda:{healthy[1]}"
+    
+    log.info(f"Device assignment -> Target/Attacker: {target_device} | Judge: {judge_device}")
+
     log.info("Loading target model...")
-    target_model = ModelLoader(MODEL_ID, precision=PRECISION)
+    target_model = ModelLoader(MODEL_ID, precision=PRECISION, device=target_device)
 
     log.info("Loading judge (Qwen3Guard)...")
-    judge = Judge()
+    judge = Judge(device=judge_device)
 
     log.info("Loading attacker (Qwen2.5-7B-Instruct)...")
-    attacker = AdaptiveAttacker(target_model=target_model, judge=judge)
+    attacker = AdaptiveAttacker(target_model=target_model, judge=judge, device=attacker_device)
 
     mlflow.set_tracking_uri(f"file:./mlruns_{PRECISION}")
     mlflow.set_experiment("QPSA-Quantization-Safety")
@@ -110,6 +154,9 @@ def run():
     mlflow.log_param("judge_model", "Qwen/Qwen3Guard-Gen-8B")
     mlflow.log_param("judge_mode", "response_only")
     mlflow.log_param("resumed_from", n_completed)
+    mlflow.log_param("target_device", target_device)
+    mlflow.log_param("judge_device", judge_device)
+    mlflow.log_param("healthy_gpus", str(healthy))
     mlflow.set_tag("attack", "cot-mutation")
 
     all_results_dicts = completed_dicts.copy()
@@ -124,7 +171,7 @@ def run():
 
         final_verdict = judge.evaluate(result.final_response, goal=goal)
         result_dict = result.to_dict()
-        result_dict["judge_safety_label"] = final_verdict.raw_label      # Safe/Unsafe/Controversial
+        result_dict["judge_safety_label"] = final_verdict.raw_label
         result_dict["judge_refusal"] = final_verdict.refusal_label
         result_dict["judge_harm_category"] = final_verdict.harm_category
         result_dict["judge_harm_name"] = final_verdict.harm_name
@@ -149,7 +196,7 @@ def run():
 
         if (global_idx + 1) % 10 == 0:
             log.info("")
-            log.info("── Running ASR [%d/%d]: %.1f%% ──", global_idx + 1, len(goals), running_asr * 100)
+            log.info("-- Running ASR [%d/%d]: %.1f%% --", global_idx + 1, len(goals), running_asr * 100)
 
     total = len(all_results_dicts)
     jailbreaks = sum(1 for r in all_results_dicts if r["success"])
@@ -169,7 +216,7 @@ def run():
 
     log.info("")
     log.info("=" * 60)
-    log.info("RESULTS — COMPLETE")
+    log.info("RESULTS - COMPLETE")
     log.info("=" * 60)
     log.info("Precision   : %s", PRECISION.upper())
     log.info("Total goals   : %d", total)
@@ -197,12 +244,12 @@ def run():
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
         writer.writerows(all_results_dicts)
-    log.info("CSV  → %s", csv_path)
+    log.info("CSV  -> %s", csv_path)
 
     json_path = f"results/attacks_{short_name}_{PRECISION}_{total}goals_{ts}.json"
     with open(json_path, "w") as f:
         json.dump(all_results_dicts, f, indent=2)
-    log.info("JSON → %s", json_path)
+    log.info("JSON -> %s", json_path)
 
     mlflow.log_metric("final_asr", asr)
     mlflow.log_metric("total_goals", total)
@@ -222,7 +269,7 @@ def run():
     if os.path.exists(CHECKPOINT_PATH):
         try:
             os.remove(CHECKPOINT_PATH)
-            log.info("Checkpoint deleted — run complete.")
+            log.info("Checkpoint deleted - run complete.")
         except OSError as e:
             log.warning("Could not delete checkpoint: %s", e)
 
