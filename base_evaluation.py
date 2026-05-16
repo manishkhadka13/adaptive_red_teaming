@@ -25,7 +25,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 from src.hqq_model_loader import ModelLoader, MODEL_ID
-from src.judge import Judge
+from src.qwen_judge import Judge  
 
 DATASET_PATH = "data/HarmBench.csv"
 N_GOALS = None
@@ -65,11 +65,8 @@ def load_checkpoint() -> list:
 
 def get_short_model_name(model_id: str) -> str:
     """Extract short name from full model ID for filenames."""
-    
     name = model_id.split("/")[-1] if "/" in model_id else model_id
-   
     name = name.lower()
-    
     for suffix in ["-instruct", "-it", "-chat"]:
         name = name.replace(suffix, "")
     return name
@@ -78,8 +75,8 @@ def run():
     log.info("=" * 60)
     log.info("BASE EVALUATION — %s Model", PRECISION.upper())
     log.info("Dataset : HarmBench — %s goals (seed=%d)", N_GOALS, RANDOM_SEED)
-    log.info("Target  : Llama-3-8B-Instruct (%s, GPU 0)", PRECISION.upper())
-    log.info("Judge   : LlamaGuard3-8B (BF16, GPU 2)")
+    log.info("Target  : %s (%s, GPU 0)", MODEL_ID.split("/")[-1], PRECISION.upper())
+    log.info("Judge   : Qwen3Guard-Gen-8B (FP16, GPU 2)")  # ← Updated judge info
     log.info("Strategy: Direct base prompt evaluation (no attacks)")
     log.info("=" * 60)
 
@@ -99,8 +96,9 @@ def run():
     log.info("Loading target model...")
     target_model = ModelLoader(MODEL_ID, precision=PRECISION)
 
-    log.info("Loading judge (LlamaGuard3)...")
-    judge = Judge()
+    log.info("Loading judge (Qwen3Guard-Gen-8B)...")
+    # ← Pass device explicitly if you want to control GPU placement
+    judge = Judge(device="cuda:2")  # Match your judge.py default
 
     all_results_dicts = completed_dicts.copy()
 
@@ -110,18 +108,22 @@ def run():
         log.info("[%d/%d] %s", global_idx + 1, len(goals), goal[:70])
         log.info("-" * 55)
 
-        # Direct base evaluation
+        
         response = target_model.generate(goal)
         log.info("Response: %s...", response[:100])
 
+        
         verdict = judge.evaluate(response=response, goal=goal)
 
         result = {
             "goal": goal,
             "precision": PRECISION,
-            "success": verdict.is_jailbreak,
+            "success": verdict.is_jailbreak,      
             "n_attempts": 1,
             "harm_category": verdict.harm_category,
+            "harm_name": verdict.harm_name,         
+            "raw_label": verdict.raw_label,          
+            "refusal_label": verdict.refusal_label,  
             "final_prompt": goal,
             "final_response": response[:300],
         }
@@ -148,7 +150,6 @@ def run():
     total = len(all_results_dicts)
     jailbreaks = sum(1 for r in all_results_dicts if r["success"])
     asr = jailbreaks / total if total > 0 else 0
-    #avg_attempts = 1.0
 
     log.info("")
     log.info("=" * 60)
@@ -157,23 +158,21 @@ def run():
     log.info("Precision   : %s", PRECISION.upper())
     log.info("Total goals : %d", total)
     log.info("Jailbreaks  : %d", jailbreaks)
-    log.info("ASR  : %.1f%%", asr * 100)
-    #log.info("Avg attempts: %.2f", avg_attempts)
+    log.info("ASR         : %.1f%%", asr * 100)
     log.info("=" * 60)
 
     for r in all_results_dicts:
         status = "JAILBREAK" if r["success"] else "REFUSED  "
-        log.info("  %s | attempts=%d | %s",
-                 status, r["n_attempts"], r["goal"][:50])
+        harm = r.get("harm_name", r.get("harm_category", "N/A"))
+        log.info("  %s | harm=%-25s | %s",
+                 status, harm, r["goal"][:40])
         
     short_name = get_short_model_name(MODEL_ID)
-
-    ts =datetime.now().strftime("%Y%m%d_%H%M%S")
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     dataset_name = Path(DATASET_PATH).stem
     sample_info = f"{N_GOALS}sample" if N_GOALS else f"{total}goals"
+    
     csv_path = f"results/{short_name}_{PRECISION}_{dataset_name}_{sample_info}_{ts}.csv"
-
-
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=all_results_dicts[0].keys())
         writer.writeheader()
@@ -193,10 +192,9 @@ def run():
             log.warning("Could not delete checkpoint: %s", e)
     else:
         log.info("No checkpoint to delete.")
-
   
     target_model.unload()
-    judge.unload()
+    judge.unload()  
     log.info("Done.")
 
 
