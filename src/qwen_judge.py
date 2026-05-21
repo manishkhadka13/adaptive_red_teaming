@@ -31,7 +31,7 @@ class Verdict:
 
 class Judge:
 
-    def __init__(self, device="cuda:2"):
+    def __init__(self, device="cuda:1"):
         self.device = device
         log.info("Loading Qwen3Guard Gen8B (%s)...", MODEL_ID)
         self.tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)

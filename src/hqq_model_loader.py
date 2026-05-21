@@ -6,7 +6,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, HqqConfig
 
 log = logging.getLogger(__name__)
 
-MODEL_ID = "mistralai/Mistral-7B-Instruct-v0.3"
+MODEL_ID = "google/gemma-2-9b-it"
 
 BIT_WIDTHS = {
     "fp16": None,  
