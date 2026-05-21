@@ -92,7 +92,7 @@ Your JSON response:"""
 
 
 class AdaptiveAttacker:
-    def __init__(self, target_model, judge, device="cuda:1", max_attempts=MAX_ATTEMPTS):
+    def __init__(self, target_model, judge, device="cuda:0", max_attempts=MAX_ATTEMPTS):
         self.target = target_model
         self.judge = judge
         self.device = device
