@@ -1,70 +1,32 @@
 # QPSA — Quantization-Probing Self-Adapting Attack
 
-Master's Thesis · Aalborg University 2026
+**Master's Thesis · Aalborg University 2026**
 
-Evaluates whether post-training quantization (FP16 → INT8 → INT4) degrades LLM safety alignment across multiple open-source models, using an adaptive red-teaming attack, LlamaGuard3 as judge, and a Vector DB adaptive defense.
+This repository contains the complete code, configuration files, and experimental results for the thesis *"QPSA: Quantization-Probing Self-Adapting Attack"*. The project systematically evaluates how post‑training quantization (PTQ) affects the safety alignment of large language models under adaptive chain‑of‑thought attacks, and assesses a hybrid stateful defence that combines a persistent vector store with an online classifier.
 
-## Models
+---
 
-**Target Models (tested at FP16 / INT8 / INT4)**
-| Model | Size | Organization |
-|-------|------|--------------|
-| Llama-3.1-8B-Instruct | 8B | Meta |
-| Mistral-7B-Instruct-v0.3 | 7B | Mistral AI |
-| Gemma-2-9B-it | 9B | Google |
-| Phi-3.5-mini-instruct | 3.8B | Microsoft |
+## 📌 Overview
 
-**Fixed Models**
-| Role | Model | Precision |
-|------|-------|-----------|
-| Attacker | Qwen2.5-14B-Instruct | INT8 |
-| Judge | LlamaGuard3-8B | BF16 |
+- **Quantization**: Half‑Quadratic Quantization (HQQ) applied on‑the‑fly to four instruction‑tuned models (Llama‑3.1‑8B, Mistral‑7B, Gemma‑2‑9B, Phi‑3.5‑mini) at FP16, INT8, and INT4.
+- **Adaptive Attacker**: Qwen2.5‑7B‑Instruct that iteratively mutates harmful prompts using chain‑of‑thought reasoning (max 5 attempts per goal). Temperature decays from 1.0 to 0.35.
+- **Safety Judge**: Qwen3Guard‑Gen‑8B providing Safe/Unsafe/Controversial labels and a refusal flag (Yes/No). (Early experiments used LlamaGuard‑3 for comparison.)
+- **Hybrid Defence**: ChromaDB vector store + online SGD classifier; a prompt is blocked if risk score `R = α·s_max + (1-α)·c` exceeds threshold τ (α=0.6, τ=0.75).
+- **Evaluation**: Attack Success Rate (ASR), controversial rate, average attempts per success
 
-## Quantization
+---
 
-Quantization is performed using **OsciQuant PTQ** (Wenshøj et al. 2025, TMLR) — a research-grade post-training quantization method using a UniformQuantizer with full layer control.
+---
 
-```python
-from osciquant.quantizers import UniformQuantizer
-from osciquant.handler    import attach_weight_quantizers, toggle_quantization
+## 🚀 Setup & Installation
 
-attach_weight_quantizers(model, quantizer=UniformQuantizer(bit_width=4), enabled=False)
-toggle_quantization(model, enabled=True)
-```
-
-## Attack Strategy
-
-| Attempt | Method |
-|---------|--------|
-| 1–5 | Chain-of-thought mutation — Qwen2.5 reads the refusal, reasons about why, generates targeted bypass |
-| 5–7 | Crescendo escalation — multi-turn attack using model's own responses as foothold |
-
-## Adaptive Defense
-
-Successful jailbreaks are stored in a **ChromaDB vector database** with their precision tag (fp16/int8/int4). Future semantically similar prompts are blocked automatically via cosine similarity search.
-
-```
-Jailbreak succeeds
-    ↓
-Embed prompt → store in ChromaDB with precision tag
-    ↓
-Next similar prompt → similarity check → blocked if sim ≥ 0.85
-    ↓
-Defense learns over time → ASR decreases
-```
-
-## Setup
-
+### 1. Clone the repository
 ```bash
-conda create -n llm_safety python=3.11 -y
+git clone https://github.com/your-username/adaptive_red_teaming.git
+cd adaptive_red_teaming
+
+conda env create -f environment.yml
 conda activate llm_safety
-pip install torch --index-url https://download.pytorch.org/whl/cu121
+
 pip install -r requirements.txt
-pip install git+https://github.com/saintslab/osc_reg.git
-```
-
-## Dataset
-
-[AdvBench](https://arxiv.org/abs/2307.15043) — 500 harmful behaviors (Zou et al. 2023)  
-[HarmBench](https://arxiv.org/abs/2402.04249) — 100 harmful behaviors across 6 categories  
-Same prompts used across all precision runs (`seed=42`) for fair comparison.
+pip install git+https://github.com/mobiusml/hqq.git
