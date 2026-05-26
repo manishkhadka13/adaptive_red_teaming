@@ -20,7 +20,7 @@ This repository contains the complete code, configuration files, and experimenta
 
 ## 🚀 Setup & Installation
 
-### 1. Clone the repository
+
 ```bash
 git clone https://github.com/your-username/adaptive_red_teaming.git
 cd adaptive_red_teaming
